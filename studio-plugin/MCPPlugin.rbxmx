@@ -33,6 +33,9 @@ local pluginState = {
 	currentRetryDelay = 0.5,
 	maxRetryDelay = 5,
 	retryBackoffMultiplier = 1.2,
+	-- UI step tracking
+	lastHttpOk = false,
+	mcpWaitStartTime = nil,
 }
 
 local screenGui = plugin:CreateDockWidgetPluginGui(
@@ -225,7 +228,7 @@ urlPadding.PaddingRight = UDim.new(0, 12)
 urlPadding.Parent = urlInput
 
 local statusSection = Instance.new("Frame")
-statusSection.Size = UDim2.new(1, 0, 0, 85)
+statusSection.Size = UDim2.new(1, 0, 0, 170)
 statusSection.BackgroundColor3 = Color3.fromRGB(31, 41, 55)
 statusSection.BorderSizePixel = 0
 statusSection.LayoutOrder = 2
@@ -279,6 +282,70 @@ detailStatusLabel.Font = Enum.Font.Jura
 detailStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
 detailStatusLabel.TextWrapped = true
 detailStatusLabel.Parent = statusSection
+
+-- Step-by-step status rows
+local stepsFrame = Instance.new("Frame")
+stepsFrame.Size = UDim2.new(1, 0, 0, 60)
+stepsFrame.Position = UDim2.new(0, 0, 0, 68)
+stepsFrame.BackgroundTransparency = 1
+stepsFrame.Parent = statusSection
+
+local stepsLayout = Instance.new("UIListLayout")
+stepsLayout.Padding = UDim.new(0, 6)
+stepsLayout.FillDirection = Enum.FillDirection.Vertical
+stepsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+stepsLayout.Parent = stepsFrame
+
+local function createStepRow(text)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 16)
+    row.BackgroundTransparency = 1
+
+    local dot = Instance.new("Frame")
+    dot.Size = UDim2.new(0, 10, 0, 10)
+    dot.Position = UDim2.new(0, 0, 0, 3)
+    dot.BackgroundColor3 = Color3.fromRGB(156, 163, 175)
+    dot.BorderSizePixel = 0
+    dot.Parent = row
+
+    local dotCorner = Instance.new("UICorner")
+    dotCorner.CornerRadius = UDim.new(1, 0)
+    dotCorner.Parent = dot
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -18, 1, 0)
+    label.Position = UDim2.new(0, 18, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = Color3.fromRGB(209, 213, 219)
+    label.TextScaled = false
+    label.TextSize = 11
+    label.Font = Enum.Font.Jura
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = row
+
+    row.Parent = stepsFrame
+    return row, dot, label
+end
+
+local step1Row, step1Dot, step1Label = createStepRow("1. HTTP server reachable")
+local step2Row, step2Dot, step2Label = createStepRow("2. MCP bridge connected")
+local step3Row, step3Dot, step3Label = createStepRow("3. Ready for commands")
+
+-- Troubleshooting tip for common stuck state
+local troubleshootLabel = Instance.new("TextLabel")
+troubleshootLabel.Size = UDim2.new(1, 0, 0, 40)
+troubleshootLabel.Position = UDim2.new(0, 0, 0, 130)
+troubleshootLabel.BackgroundTransparency = 1
+troubleshootLabel.TextWrapped = true
+troubleshootLabel.Visible = false
+troubleshootLabel.Text = "HTTP is OK but MCP isn't responding. Close all node.exe in Task Manager and restart the server."
+troubleshootLabel.TextColor3 = Color3.fromRGB(245, 158, 11)
+troubleshootLabel.TextScaled = false
+troubleshootLabel.TextSize = 11
+troubleshootLabel.Font = Enum.Font.Jura
+troubleshootLabel.TextXAlignment = Enum.TextXAlignment.Left
+troubleshootLabel.Parent = statusSection
 
 local connectButton = Instance.new("TextButton")
 connectButton.Size = UDim2.new(1, 0, 0, 48)
@@ -396,6 +463,10 @@ local function pollForRequests()
 
 		local data = HttpService:JSONDecode(result.Body)
 		local mcpConnected = data.mcpConnected == true
+		-- Step indicators: HTTP request succeeded
+		pluginState.lastHttpOk = true
+		step1Dot.BackgroundColor3 = Color3.fromRGB(34, 197, 94)
+		step1Label.Text = "1. HTTP server reachable (OK)"
 
 		if mcpConnected and not statusLabel.Text:find("Connected") then
 			statusLabel.Text = "Connected"
@@ -405,6 +476,13 @@ local function pollForRequests()
 			statusText.Text = "ONLINE"
 			detailStatusLabel.Text = "HTTP: OK  MCP: OK"
 			detailStatusLabel.TextColor3 = Color3.fromRGB(34, 197, 94)
+			-- Steps 2/3 OK
+			step2Dot.BackgroundColor3 = Color3.fromRGB(34, 197, 94)
+			step2Label.Text = "2. MCP bridge connected (OK)"
+			step3Dot.BackgroundColor3 = Color3.fromRGB(34, 197, 94)
+			step3Label.Text = "3. Ready for commands (OK)"
+			pluginState.mcpWaitStartTime = nil
+			troubleshootLabel.Visible = false
 			stopPulseAnimation()
 		elseif not mcpConnected then
 			statusLabel.Text = "Waiting for MCP server"
@@ -414,6 +492,17 @@ local function pollForRequests()
 			statusText.Text = "WAITING"
 			detailStatusLabel.Text = "HTTP: OK  MCP: ..."
 			detailStatusLabel.TextColor3 = Color3.fromRGB(245, 158, 11)
+			-- Step 2/3 pending
+			step2Dot.BackgroundColor3 = Color3.fromRGB(245, 158, 11)
+			step2Label.Text = "2. MCP bridge connected (waiting...)"
+			step3Dot.BackgroundColor3 = Color3.fromRGB(245, 158, 11)
+			step3Label.Text = "3. Ready for commands (waiting...)"
+			-- Track stuck state where HTTP is OK but MCP isn't
+			if not pluginState.mcpWaitStartTime then
+				pluginState.mcpWaitStartTime = tick()
+			end
+			local elapsed = tick() - (pluginState.mcpWaitStartTime or tick())
+			troubleshootLabel.Visible = elapsed > 8
 			startPulseAnimation()
 		end
 
@@ -437,6 +526,15 @@ local function pollForRequests()
 			statusText.Text = "ERROR"
 			detailStatusLabel.Text = "HTTP: X  MCP: X"
 			detailStatusLabel.TextColor3 = Color3.fromRGB(239, 68, 68)
+			-- Steps show error
+			step1Dot.BackgroundColor3 = Color3.fromRGB(239, 68, 68)
+			step1Label.Text = "1. HTTP server reachable (error)"
+			step2Dot.BackgroundColor3 = Color3.fromRGB(239, 68, 68)
+			step2Label.Text = "2. MCP bridge connected (error)"
+			step3Dot.BackgroundColor3 = Color3.fromRGB(239, 68, 68)
+			step3Label.Text = "3. Ready for commands (error)"
+			pluginState.mcpWaitStartTime = nil
+			troubleshootLabel.Visible = false
 			stopPulseAnimation()
 		elseif pluginState.consecutiveFailures > 5 then
 			local waitTime = math.ceil(pluginState.currentRetryDelay)
@@ -447,6 +545,15 @@ local function pollForRequests()
 			statusText.Text = "RETRY"
 			detailStatusLabel.Text = "HTTP: ...  MCP: ..."
 			detailStatusLabel.TextColor3 = Color3.fromRGB(245, 158, 11)
+			-- Steps show retrying
+			step1Dot.BackgroundColor3 = Color3.fromRGB(245, 158, 11)
+			step1Label.Text = "1. HTTP server reachable (retrying...)"
+			step2Dot.BackgroundColor3 = Color3.fromRGB(245, 158, 11)
+			step2Label.Text = "2. MCP bridge connected (retrying...)"
+			step3Dot.BackgroundColor3 = Color3.fromRGB(245, 158, 11)
+			step3Label.Text = "3. Ready for commands (retrying...)"
+			pluginState.mcpWaitStartTime = nil
+			troubleshootLabel.Visible = false
 			startPulseAnimation()
 		elseif pluginState.consecutiveFailures > 1 then
 			statusLabel.Text = "Connecting (attempt " .. pluginState.consecutiveFailures .. ")"
@@ -456,6 +563,15 @@ local function pollForRequests()
 			statusText.Text = "CONNECTING"
 			detailStatusLabel.Text = "HTTP: ...  MCP: ..."
 			detailStatusLabel.TextColor3 = Color3.fromRGB(245, 158, 11)
+			-- Steps show connecting
+			step1Dot.BackgroundColor3 = Color3.fromRGB(245, 158, 11)
+			step1Label.Text = "1. HTTP server reachable (connecting...)"
+			step2Dot.BackgroundColor3 = Color3.fromRGB(245, 158, 11)
+			step2Label.Text = "2. MCP bridge connected (connecting...)"
+			step3Dot.BackgroundColor3 = Color3.fromRGB(245, 158, 11)
+			step3Label.Text = "3. Ready for commands (connecting...)"
+			pluginState.mcpWaitStartTime = nil
+			troubleshootLabel.Visible = false
 			startPulseAnimation()
 		end
 	end
@@ -2182,6 +2298,16 @@ local function updateUIState()
 		connectButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 		startPulseAnimation()
 
+		-- Reset steps to connecting state
+		step1Dot.BackgroundColor3 = Color3.fromRGB(245, 158, 11)
+		step1Label.Text = "1. HTTP server reachable (connecting...)"
+		step2Dot.BackgroundColor3 = Color3.fromRGB(245, 158, 11)
+		step2Label.Text = "2. MCP bridge connected (connecting...)"
+		step3Dot.BackgroundColor3 = Color3.fromRGB(245, 158, 11)
+		step3Label.Text = "3. Ready for commands (connecting...)"
+		pluginState.mcpWaitStartTime = nil
+		troubleshootLabel.Visible = false
+
 		if not buttonHover then
 			connectButton.BackgroundColor3 = Color3.fromRGB(239, 68, 68)
 		end
@@ -2201,6 +2327,16 @@ local function updateUIState()
 		connectButton.Text = "Connect"
 		connectButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 		stopPulseAnimation()
+
+		-- Reset steps to offline state
+		step1Dot.BackgroundColor3 = Color3.fromRGB(239, 68, 68)
+		step1Label.Text = "1. HTTP server reachable (offline)"
+		step2Dot.BackgroundColor3 = Color3.fromRGB(239, 68, 68)
+		step2Label.Text = "2. MCP bridge connected (offline)"
+		step3Dot.BackgroundColor3 = Color3.fromRGB(239, 68, 68)
+		step3Label.Text = "3. Ready for commands (offline)"
+		pluginState.mcpWaitStartTime = nil
+		troubleshootLabel.Visible = false
 
 		if not buttonHover then
 			connectButton.BackgroundColor3 = Color3.fromRGB(16, 185, 129)
