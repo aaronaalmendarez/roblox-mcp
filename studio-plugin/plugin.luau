@@ -426,6 +426,43 @@ local function getInstancePath(instance)
 	return "game." .. table.concat(path, ".")
 end
 
+-- Helper to normalize line endings and split without inventing an extra trailing line
+local function splitLines(source)
+	local normalized = (source or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
+	local endsWithNewline = normalized:sub(-1) == "\n"
+
+	local lines = {}
+	local start = 1
+
+	while true do
+		local newlinePos = string.find(normalized, "\n", start, true)
+		if newlinePos then
+			table.insert(lines, string.sub(normalized, start, newlinePos - 1))
+			start = newlinePos + 1
+		else
+			local remainder = string.sub(normalized, start)
+			if remainder ~= "" or not endsWithNewline then
+				table.insert(lines, remainder)
+			end
+			break
+		end
+	end
+
+	if #lines == 0 then
+		table.insert(lines, "")
+	end
+
+	return lines, endsWithNewline
+end
+
+local function joinLines(lines, hadTrailingNewline)
+	local source = table.concat(lines, "\n")
+	if hadTrailingNewline and source:sub(-1) ~= "\n" then
+		source ..= "\n"
+	end
+	return source
+end
+
 local processRequest
 local sendResponse
 local handlers = {}
@@ -2370,43 +2407,6 @@ handlers.setScriptSource = function(requestData)
 			        ". Replace method failed: " .. tostring(replaceResult)
 		}
 	end
-end
-
--- Helper to normalize line endings and split without inventing an extra trailing line
-local function splitLines(source)
-	local normalized = (source or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
-	local endsWithNewline = normalized:sub(-1) == "\n"
-
-	local lines = {}
-	local start = 1
-
-	while true do
-		local newlinePos = string.find(normalized, "\n", start, true)
-		if newlinePos then
-			table.insert(lines, string.sub(normalized, start, newlinePos - 1))
-			start = newlinePos + 1
-		else
-			local remainder = string.sub(normalized, start)
-			if remainder ~= "" or not endsWithNewline then
-				table.insert(lines, remainder)
-			end
-			break
-		end
-	end
-
-	if #lines == 0 then
-		table.insert(lines, "")
-	end
-
-	return lines, endsWithNewline
-end
-
-local function joinLines(lines, hadTrailingNewline)
-	local source = table.concat(lines, "\n")
-	if hadTrailingNewline and source:sub(-1) ~= "\n" then
-		source ..= "\n"
-	end
-	return source
 end
 
 -- Partial Script Editing: Edit specific lines
