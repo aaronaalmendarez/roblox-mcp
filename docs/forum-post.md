@@ -114,11 +114,17 @@ Attributes & Tags:     "Tag all enemies for CollectionService" / "Set custom att
 
 ## Latest Updates
 
-### v1.7.0
+### v1.8.0
+- **New Tool: `get_selection`** - Get currently selected objects in Studio for context-aware AI assistance
+- **Fixed Property Setting:** `mass_create_objects_with_properties` and `set_property` now correctly handle Vector3, Color3, Enums, and instance references (like PrimaryPart)
+- **Fixed Newline Corruption:** Script source with escaped characters now properly converts when pushing code to Studio
+- **Improved Tool Descriptions:** Clearer documentation distinguishing Roblox instances from local files
+
+### v1.7.x
 - **Partial Script Editing:** `edit_script_lines`, `insert_script_lines`, `delete_script_lines` for targeted edits without rewriting entire scripts
 - **Attributes Support:** `get_attribute`, `set_attribute`, `get_attributes`, `delete_attribute` with Vector3, Color3, UDim2, BrickColor support
 - **Tags (CollectionService):** `get_tags`, `add_tag`, `remove_tag`, `get_tagged` for tag-based workflows
-- **Improved Script Handling:** `get_script_source` now supports `startLine`/`endLine` for reading sections of large scripts
+- **Improved Script Handling:** `get_script_source` now returns `numberedSource` field with line numbers for accurate editing
 - Uses ScriptEditorService:UpdateSourceAsync for editing scripts open in tabs
 
 ---
