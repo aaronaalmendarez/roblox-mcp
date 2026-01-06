@@ -11,6 +11,8 @@ local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local ScriptEditorService = game:GetService("ScriptEditorService")
 local CollectionService = game:GetService("CollectionService")
 
+local CURRENT_VERSION = "1.9.0"
+
 local toolbar = plugin:CreateToolbar("MCP Integration")
 local button =
 	toolbar:CreateButton("MCP Server", "Connect to MCP Server for AI Integration", "rbxassetid://10734944444")
@@ -36,7 +38,7 @@ local screenGui = plugin:CreateDockWidgetPluginGuiAsync(
 	"MCPServerInterface",
 	DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, false, false, 400, 500, 350, 450)
 )
-screenGui.Title = "MCP Server v1.9.0"
+screenGui.Title = "MCP Server v" .. CURRENT_VERSION
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(1, 0, 1, 0)
@@ -89,7 +91,7 @@ local versionLabel = Instance.new("TextLabel")
 versionLabel.Size = UDim2.new(1, 0, 0, 16)
 versionLabel.Position = UDim2.new(0, 0, 0, 32)
 versionLabel.BackgroundTransparency = 1
-versionLabel.Text = "AI Integration • v1.9.0"
+versionLabel.Text = "AI Integration • v" .. CURRENT_VERSION
 versionLabel.TextColor3 = Color3.fromRGB(191, 219, 254)
 versionLabel.TextScaled = false
 versionLabel.TextSize = 12
@@ -137,6 +139,46 @@ statusText.TextSize = 8
 statusText.Font = Enum.Font.Jura
 statusText.TextXAlignment = Enum.TextXAlignment.Center
 statusText.Parent = statusContainer
+
+-- Update banner (hidden by default)
+local updateBanner = Instance.new("Frame")
+updateBanner.Size = UDim2.new(1, -20, 0, 36)
+updateBanner.Position = UDim2.new(0, 10, 0, 65)
+updateBanner.BackgroundColor3 = Color3.fromRGB(245, 158, 11)
+updateBanner.BorderSizePixel = 0
+updateBanner.Visible = false
+updateBanner.Parent = mainFrame
+
+local updateBannerCorner = Instance.new("UICorner")
+updateBannerCorner.CornerRadius = UDim.new(0, 6)
+updateBannerCorner.Parent = updateBanner
+
+local updateBannerText = Instance.new("TextLabel")
+updateBannerText.Size = UDim2.new(1, -20, 1, 0)
+updateBannerText.Position = UDim2.new(0, 10, 0, 0)
+updateBannerText.BackgroundTransparency = 1
+updateBannerText.Text = "Update available: v0.0.0"
+updateBannerText.TextColor3 = Color3.fromRGB(0, 0, 0)
+updateBannerText.TextScaled = false
+updateBannerText.TextSize = 12
+updateBannerText.Font = Enum.Font.GothamBold
+updateBannerText.TextXAlignment = Enum.TextXAlignment.Left
+updateBannerText.Parent = updateBanner
+
+local updateLink = Instance.new("TextButton")
+updateLink.Size = UDim2.new(0, 60, 0, 24)
+updateLink.Position = UDim2.new(1, -70, 0, 6)
+updateLink.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+updateLink.BackgroundTransparency = 0.7
+updateLink.Text = "Update"
+updateLink.TextColor3 = Color3.fromRGB(255, 255, 255)
+updateLink.TextSize = 11
+updateLink.Font = Enum.Font.GothamBold
+updateLink.Parent = updateBanner
+
+local updateLinkCorner = Instance.new("UICorner")
+updateLinkCorner.CornerRadius = UDim.new(0, 4)
+updateLinkCorner.Parent = updateLink
 
 local contentFrame = Instance.new("ScrollingFrame")
 contentFrame.Size = UDim2.new(1, -20, 1, -80)
@@ -3236,7 +3278,73 @@ plugin.Unloading:Connect(function()
 	deactivatePlugin()
 end)
 
+-- Version comparison helper
+local function compareVersions(v1, v2)
+	local function parseVersion(v)
+		local parts = {}
+		for num in string.gmatch(v, "%d+") do
+			table.insert(parts, tonumber(num) or 0)
+		end
+		return parts
+	end
+
+	local p1, p2 = parseVersion(v1), parseVersion(v2)
+	for i = 1, math.max(#p1, #p2) do
+		local n1, n2 = p1[i] or 0, p2[i] or 0
+		if n1 < n2 then return -1 end
+		if n1 > n2 then return 1 end
+	end
+	return 0
+end
+
+-- Check for updates from npm registry
+local function checkForUpdates()
+	task.spawn(function()
+		local success, result = pcall(function()
+			local response = HttpService:RequestAsync({
+				Url = "https://registry.npmjs.org/robloxstudio-mcp/latest",
+				Method = "GET",
+				Headers = {
+					["Accept"] = "application/json",
+				},
+			})
+			return response
+		end)
+
+		if success and result.Success then
+			local ok, data = pcall(function()
+				return HttpService:JSONDecode(result.Body)
+			end)
+
+			if ok and data and data.version then
+				local latestVersion = data.version
+				if compareVersions(CURRENT_VERSION, latestVersion) < 0 then
+					updateBannerText.Text = "Update available: v" .. latestVersion
+					updateBanner.Visible = true
+					contentFrame.Position = UDim2.new(0, 10, 0, 110)
+					contentFrame.Size = UDim2.new(1, -20, 1, -120)
+				end
+			end
+		end
+	end)
+end
+
+-- Update button opens GitHub releases
+updateLink.Activated:Connect(function()
+	local url = "https://github.com/boshyxd/robloxstudio-mcp/releases"
+	if setclipboard then
+		pcall(function() setclipboard(url) end)
+	end
+	updateBannerText.Text = "Link copied! Visit GitHub releases"
+	task.delay(3, function()
+		if updateBanner.Visible then
+			updateBannerText.Text = "Update available - check GitHub releases"
+		end
+	end)
+end)
+
 updateUIState()
+checkForUpdates()
 ]]></string>
     </Properties>
   </Item>
