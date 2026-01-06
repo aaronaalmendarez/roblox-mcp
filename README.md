@@ -1,6 +1,6 @@
 # Roblox Studio MCP Server
 
-MCP server for AI-powered Roblox Studio integration. 18 specialized tools for exploring projects, analyzing scripts, and performing bulk operations.
+MCP server for AI-powered Roblox Studio integration. 37+ specialized tools for exploring projects, editing scripts, manipulating attributes/tags, and performing bulk operations.
 
 https://devforum.roblox.com/t/v180-roblox-studio-mcp-speed-up-your-workflow-by-letting-ai-read-paths-and-properties/3707071
 
@@ -83,7 +83,7 @@ graph TB
         STUDIO["Roblox Studio<br/>APIs & Data"]
     end
     
-    subgraph TOOLS ["18 AI Tools"]
+    subgraph TOOLS ["37+ AI Tools"]
         FILE["File System<br/>Trees, Search"]
         CONTEXT["Studio Context<br/>Services, Objects"]
         PROPS["Properties<br/>Get, Set, Mass Ops"]
@@ -124,21 +124,22 @@ graph TB
 ```
 
 ### Key Components:
-- MCP Server (Node.js/TypeScript) - Exposes 18 tools via stdio
+- MCP Server (Node.js/TypeScript) - Exposes 37+ tools via stdio and HTTP
 - HTTP Bridge - Request/response queue on localhost:3002
 - Studio Plugin (Luau) - Polls server and executes API calls
-- Smart Caching - Efficient data transfer
+- Full HTTP API - All tools available via both stdio MCP and HTTP endpoints
 
-## 18 AI Tools
+## 37+ AI Tools
 
 ### File System Tools
 - `get_file_tree` - Complete project hierarchy with scripts, models, folders
-- `search_files` - Find files by name, type, or content patterns  
+- `search_files` - Find files by name, type, or content patterns
 
-### Studio Context Tools  
+### Studio Context Tools
 - `get_place_info` - Place ID, name, game settings, workspace info
 - `get_services` - All Roblox services and their child counts
 - `search_objects` - Find instances by name, class, or properties
+- `get_selection` - Get currently selected objects in Studio
 
 ### Instance & Property Tools
 - `get_instance_properties` - Complete property dump for any object
@@ -146,22 +147,43 @@ graph TB
 - `search_by_property` - Find objects with specific property values
 - `get_class_info` - Available properties/methods for Roblox classes
 
-### Property Modification Tools 
+### Property Modification Tools
 - `set_property` - Set a property on any Roblox instance
 - `mass_set_property` - Set the same property on multiple instances
 - `mass_get_property` - Get the same property from multiple instances
+- `set_calculated_property` - Set properties using mathematical formulas
+- `set_relative_property` - Modify properties relative to current values
 
-### Object Creation Tools
+### Object Creation & Manipulation Tools
 - `create_object` - Create a new Roblox object instance
 - `create_object_with_properties` - Create objects with initial properties
 - `mass_create_objects` - Create multiple objects at once
 - `mass_create_objects_with_properties` - Create multiple objects with properties
 - `delete_object` - Delete a Roblox object instance
+- `smart_duplicate` - Duplicate with naming patterns, position offsets, property variations
+- `mass_duplicate` - Perform multiple smart duplications at once
+
+### Script Editing Tools (v1.9.0)
+- `get_script_source` - Read script source code with line numbers
+- `set_script_source` - Replace entire script source
+- `edit_script_lines` - Replace specific lines without rewriting entire script
+- `insert_script_lines` - Insert new lines at specific positions
+- `delete_script_lines` - Delete specific lines from scripts
+
+### Attribute Tools (v1.9.0)
+- `get_attribute` - Get a single attribute value
+- `set_attribute` - Set an attribute (supports Vector3, Color3, etc.)
+- `get_attributes` - Get all attributes on an instance
+- `delete_attribute` - Remove an attribute
+
+### Tag Tools (CollectionService) (v1.9.0)
+- `get_tags` - Get all tags on an instance
+- `add_tag` - Add a tag to an instance
+- `remove_tag` - Remove a tag from an instance
+- `get_tagged` - Find all instances with a specific tag
 
 ### Project Analysis Tools
 - `get_project_structure` - Smart hierarchy with depth control (recommended: 5-10)
-
-> Note: Previous tools removed: `get_file_content`, `get_file_properties`, `get_selection`, `get_dependencies`, `validate_references`. Use Rojo/Argon workflows instead.
 
 ## AI-Optimized Features
 
@@ -192,12 +214,20 @@ mass_set_property(["game.Workspace.Part1", "game.Workspace.Part2"], "BrickColor"
 
 ### Commands
 ```bash
-npm run dev         # Development server with hot reload  
+npm run dev         # Development server with hot reload
 npm run build       # Production build
 npm start           # Run built server
 npm run lint        # ESLint code quality
 npm run typecheck   # TypeScript validation
+npm test            # Run Jest unit tests
+npm run test:e2e    # Run Lune E2E tests (requires server running)
+npm run test:all    # Run all tests
 ```
+
+### Testing
+- **Jest Unit Tests** - 32 tests covering bridge service, HTTP server, and integration
+- **Lune E2E Tests** - 30 tests verifying all HTTP endpoints work correctly
+- Tests ensure full feature parity between stdio MCP and HTTP modes
 
 ### Plugin Development
 - Live reload

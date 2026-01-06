@@ -19,11 +19,6 @@ export default {
       }
     }],
   },
-  globals: {
-    'ts-jest': {
-      useESM: true,
-    },
-  },
   testMatch: [
     '**/__tests__/**/*.test.ts',
     '**/*.test.ts'

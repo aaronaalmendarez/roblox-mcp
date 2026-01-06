@@ -115,29 +115,44 @@ describe('BridgeService', () => {
 
   describe('Request Priority', () => {
     test('should return oldest request first', async () => {
-      // Create requests with small delays
+      // Create requests with different timestamps using fake timers
       bridgeService.sendRequest('/api/test1', { order: 1 });
-      
-      // Small delay to ensure different timestamps
-      await new Promise(resolve => setTimeout(resolve, 10));
-      
+
+      // Advance time to ensure different timestamps
+      jest.advanceTimersByTime(10);
+
       bridgeService.sendRequest('/api/test2', { order: 2 });
-      
-      await new Promise(resolve => setTimeout(resolve, 10));
-      
+
+      jest.advanceTimersByTime(10);
+
       bridgeService.sendRequest('/api/test3', { order: 3 });
-      
+
+      // getPendingRequest() peeks at the oldest request without removing it
+      // So we need to resolve each request to get to the next one
+
       // Should get the first (oldest) request
       const firstRequest = bridgeService.getPendingRequest();
       expect(firstRequest?.request.data.order).toBe(1);
-      
+
+      // Resolve the first request to remove it from the queue
+      bridgeService.resolveRequest(firstRequest!.requestId, {});
+
       // Should get the second request next
       const secondRequest = bridgeService.getPendingRequest();
       expect(secondRequest?.request.data.order).toBe(2);
-      
+
+      // Resolve the second request
+      bridgeService.resolveRequest(secondRequest!.requestId, {});
+
       // Should get the third request last
       const thirdRequest = bridgeService.getPendingRequest();
       expect(thirdRequest?.request.data.order).toBe(3);
+
+      // Resolve the third request
+      bridgeService.resolveRequest(thirdRequest!.requestId, {});
+
+      // No more pending requests
+      expect(bridgeService.getPendingRequest()).toBeNull();
     });
   });
 });

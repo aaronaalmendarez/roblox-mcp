@@ -15,6 +15,11 @@ describe('HTTP Server', () => {
     app = createHttpServer(tools, bridge);
   });
 
+  afterEach(() => {
+    // Clean up any pending requests to prevent open handles
+    bridge.clearAllPendingRequests();
+  });
+
   describe('Health Check', () => {
     test('should return health status', async () => {
       const response = await request(app)
@@ -56,9 +61,12 @@ describe('HTTP Server', () => {
 
     test('should clear pending requests on disconnect', async () => {
       // Add some pending requests
-      bridge.sendRequest('/api/test1', {});
-      bridge.sendRequest('/api/test2', {});
-      
+      // Attach catch handlers to prevent unhandled rejection warnings
+      const p1 = bridge.sendRequest('/api/test1', {});
+      const p2 = bridge.sendRequest('/api/test2', {});
+      p1.catch(() => {});
+      p2.catch(() => {});
+
       expect(bridge.getPendingRequest()).toBeTruthy();
 
       // Disconnect
@@ -104,7 +112,9 @@ describe('HTTP Server', () => {
       app.setMCPServerActive(true);
 
       // Add a pending request
-      bridge.sendRequest('/api/test', { data: 'test' });
+      // Attach catch handler to prevent unhandled rejection during cleanup
+      const pendingRequest = bridge.sendRequest('/api/test', { data: 'test' });
+      pendingRequest.catch(() => {});
 
       const response = await request(app)
         .get('/poll')
@@ -174,7 +184,9 @@ describe('HTTP Server', () => {
       const error = 'Test error message';
 
       // Create a pending request
+      // Attach catch handler to prevent unhandled rejection warning
       const requestPromise = bridge.sendRequest('/api/test', {});
+      requestPromise.catch(() => {});
       const pendingRequest = bridge.getPendingRequest();
 
       // Send error response

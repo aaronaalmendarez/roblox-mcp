@@ -301,6 +301,174 @@ export function createHttpServer(tools: RobloxStudioTools, bridge: BridgeService
     }
   });
 
+  // Property modification endpoint
+  app.post('/mcp/set_property', async (req, res) => {
+    try {
+      const result = await tools.setProperty(req.body.instancePath, req.body.propertyName, req.body.propertyValue);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Object creation/deletion endpoints
+  app.post('/mcp/create_object', async (req, res) => {
+    try {
+      const result = await tools.createObject(req.body.className, req.body.parent, req.body.name);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/delete_object', async (req, res) => {
+    try {
+      const result = await tools.deleteObject(req.body.instancePath);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Smart duplication endpoints
+  app.post('/mcp/smart_duplicate', async (req, res) => {
+    try {
+      const result = await tools.smartDuplicate(req.body.instancePath, req.body.count, req.body.options);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/mass_duplicate', async (req, res) => {
+    try {
+      const result = await tools.massDuplicate(req.body.duplications);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Calculated/relative property endpoints
+  app.post('/mcp/set_calculated_property', async (req, res) => {
+    try {
+      const result = await tools.setCalculatedProperty(req.body.paths, req.body.propertyName, req.body.formula, req.body.variables);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/set_relative_property', async (req, res) => {
+    try {
+      const result = await tools.setRelativeProperty(req.body.paths, req.body.propertyName, req.body.operation, req.body.value, req.body.component);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Partial script editing endpoints
+  app.post('/mcp/edit_script_lines', async (req, res) => {
+    try {
+      const result = await tools.editScriptLines(req.body.instancePath, req.body.startLine, req.body.endLine, req.body.newContent);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/insert_script_lines', async (req, res) => {
+    try {
+      const result = await tools.insertScriptLines(req.body.instancePath, req.body.afterLine, req.body.newContent);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/delete_script_lines', async (req, res) => {
+    try {
+      const result = await tools.deleteScriptLines(req.body.instancePath, req.body.startLine, req.body.endLine);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Attribute endpoints
+  app.post('/mcp/get_attribute', async (req, res) => {
+    try {
+      const result = await tools.getAttribute(req.body.instancePath, req.body.attributeName);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/set_attribute', async (req, res) => {
+    try {
+      const result = await tools.setAttribute(req.body.instancePath, req.body.attributeName, req.body.attributeValue, req.body.valueType);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/get_attributes', async (req, res) => {
+    try {
+      const result = await tools.getAttributes(req.body.instancePath);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/delete_attribute', async (req, res) => {
+    try {
+      const result = await tools.deleteAttribute(req.body.instancePath, req.body.attributeName);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Tag (CollectionService) endpoints
+  app.post('/mcp/get_tags', async (req, res) => {
+    try {
+      const result = await tools.getTags(req.body.instancePath);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/add_tag', async (req, res) => {
+    try {
+      const result = await tools.addTag(req.body.instancePath, req.body.tagName);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/remove_tag', async (req, res) => {
+    try {
+      const result = await tools.removeTag(req.body.instancePath, req.body.tagName);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/get_tagged', async (req, res) => {
+    try {
+      const result = await tools.getTagged(req.body.tagName);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
 
   // Add methods to control and check server status
   (app as any).isPluginConnected = isPluginConnected;

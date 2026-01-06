@@ -55,3 +55,7 @@ temp/
 # AI-generated content
 banner-prompt.txt
 forum-title.txt
+
+# Lune runtime (downloaded for E2E tests)
+lune.exe
+lune.zip

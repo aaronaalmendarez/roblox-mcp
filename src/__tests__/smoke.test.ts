@@ -50,13 +50,15 @@ describe('Smoke Tests - Connection Fixes', () => {
     const app = createHttpServer(tools, bridge);
 
     // Add a pending request (don't await it)
+    // Attach a no-op catch to prevent unhandled rejection warning
     const pendingPromise = bridge.sendRequest('/test', { data: 'test' });
-    
+    pendingPromise.catch(() => {}); // Prevent unhandled rejection
+
     // Disconnect should clear it
     await request(app)
       .post('/disconnect')
       .expect(200);
-    
+
     // Request should be rejected
     await expect(pendingPromise).rejects.toThrow('Connection closed');
   });

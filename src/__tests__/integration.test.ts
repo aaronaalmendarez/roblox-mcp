@@ -15,6 +15,11 @@ describe('Integration Tests', () => {
     app = createHttpServer(tools, bridge);
   });
 
+  afterEach(() => {
+    // Clean up any pending requests to prevent open handles
+    bridge.clearAllPendingRequests();
+  });
+
   describe('Full Connection Flow', () => {
     test('should handle complete connection lifecycle', async () => {
       // 1. Initial state - nothing connected
@@ -112,7 +117,9 @@ describe('Integration Tests', () => {
       app.setMCPServerActive(true);
 
       // Send request
+      // Attach catch handler to prevent unhandled rejection warning
       const mcpRequestPromise = bridge.sendRequest('/api/failing-endpoint', {});
+      mcpRequestPromise.catch(() => {});
 
       // Poll for request
       const pollResponse = await request(app).get('/poll').expect(200);
@@ -139,8 +146,11 @@ describe('Integration Tests', () => {
       app.setMCPServerActive(true);
 
       // Create some pending requests
+      // Attach catch handlers to prevent unhandled rejection warnings
       const request1 = bridge.sendRequest('/api/test1', {});
       const request2 = bridge.sendRequest('/api/test2', {});
+      request1.catch(() => {});
+      request2.catch(() => {});
 
       // Verify requests are pending
       let poll = await request(app).get('/poll').expect(200);
