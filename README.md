@@ -13,7 +13,7 @@ An MCP server that lets AI explore your game structure, read/edit scripts, and p
 ## Setup
 
 1. Install the [Studio plugin](https://github.com/boshyxd/robloxstudio-mcp/releases) to your Plugins folder
-2. Enable **Allow HTTP Requests** in Game Settings > Security
+2. Enable **Allow HTTP Requests** in Experience Settings > Security
 3. Connect your AI:
 
 **Gemini:**
