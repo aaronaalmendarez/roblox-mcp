@@ -1295,12 +1295,26 @@ handlers.getClassInfo = function(requestData)
 		return Instance.new(className)
 	end)
 
+	-- If Instance.new fails, try game:GetService for services (e.g. MarketplaceService)
+	local isService = false
+	if not success then
+		local serviceSuccess, serviceInstance = pcall(function()
+			return game:GetService(className)
+		end)
+		if serviceSuccess and serviceInstance then
+			success = true
+			tempInstance = serviceInstance
+			isService = true
+		end
+	end
+
 	if not success then
 		return { error = "Invalid class name: " .. className }
 	end
 
 	local classInfo = {
 		className = className,
+		isService = isService,
 		properties = {},
 		methods = {},
 		events = {},
@@ -1369,7 +1383,9 @@ handlers.getClassInfo = function(requestData)
 		end
 	end
 
-	tempInstance:Destroy()
+	if not isService then
+		tempInstance:Destroy()
+	end
 
 	return classInfo
 end
