@@ -61,3 +61,9 @@ forum-title.txt
 # Lune runtime (downloaded for E2E tests)
 lune.exe
 lune.zip
+
+# Blueprint V1 - User-specific place data (local state)
+blueprint-v1/places/.active-place.json
+blueprint-v1/places/registry.json
+blueprint-v1/places/place*/
+blueprint-v1/places/untitled-*/
