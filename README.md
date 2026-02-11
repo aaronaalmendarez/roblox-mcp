@@ -1,4 +1,4 @@
-<p align="center">
+﻿<p align="center">
   <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Roblox_player_icon_black.svg/200px-Roblox_player_icon_black.svg.png" alt="Roblox Studio MCP" width="80" />
 </p>
 
@@ -16,12 +16,12 @@
 </p>
 
 <p align="center">
-  <a href="#-quick-start">Quick Start</a> •
-  <a href="#-features">Features</a> •
-  <a href="#%EF%B8%8F-architecture">Architecture</a> •
-  <a href="#-mcp-tools">Tools</a> •
-  <a href="#-client-setup">Client Setup</a> •
-  <a href="#-blueprint-v1">Blueprint</a> •
+  <a href="#-quick-start">Quick Start</a> â€¢
+  <a href="#-features">Features</a> â€¢
+  <a href="#%EF%B8%8F-architecture">Architecture</a> â€¢
+  <a href="#-mcp-tools">Tools</a> â€¢
+  <a href="#-client-setup">Client Setup</a> â€¢
+  <a href="#-blueprint-v1">Blueprint</a> â€¢
   <a href="#-contributing">Contributing</a>
 </p>
 
@@ -29,9 +29,9 @@
 
 ## What Is This?
 
-**Roblox Studio MCP** bridges any MCP-compatible AI assistant — Claude, Gemini, Codex, OpenCode, and more — directly into a running Roblox Studio session. Your AI can read the instance tree, edit scripts, set properties, manage attributes and tags, create objects, and sync source files — all through a local, privacy-first connection that never leaves your machine.
+**Roblox Studio MCP** bridges any MCP-compatible AI assistant â€” Claude, Gemini, Codex, OpenCode, and more â€” directly into a running Roblox Studio session. Your AI can read the instance tree, edit scripts, set properties, manage attributes and tags, create objects, and sync source files â€” all through a local, privacy-first connection that never leaves your machine.
 
-## 🚀 Quick Start
+## ðŸš€ Quick Start
 
 ### 1. Install the Studio Plugin
 
@@ -54,7 +54,7 @@ npm run build:plugin
 
 ### 2. Enable HTTP in Studio
 
-**Game Settings → Security → Allow HTTP Requests** ✅
+**Game Settings â†’ Security â†’ Allow HTTP Requests** âœ…
 
 ### 3. Connect Your AI Client
 
@@ -63,9 +63,8 @@ npm run build:plugin
 node dist/index.js
 ```
 
-Note: `npx -y robloxstudio-mcp@latest` runs the upstream package from `boshyxd/robloxstudio-mcp`.
 
-## ✨ Features
+## âœ¨ Features
 
 ### 37+ MCP Tools
 
@@ -82,10 +81,10 @@ Note: `npx -y robloxstudio-mcp@latest` runs the upstream package from `boshyxd/r
 
 ### IDE-First Workflow
 
-- **Blueprint V1** — Rojo-based source control with multi-place project support
-- **Bi-directional sync** — Push files to Studio or pull Studio changes back to disk
-- **Conflict resolution** — Hash-based safeguards prevent accidental overwrites
-- **Drift detection** — Detect when Studio and local files have diverged
+- **Blueprint V1** â€” Rojo-based source control with multi-place project support
+- **Bi-directional sync** â€” Push files to Studio or pull Studio changes back to disk
+- **Conflict resolution** â€” Hash-based safeguards prevent accidental overwrites
+- **Drift detection** â€” Detect when Studio and local files have diverged
 
 ### Reliability & Performance
 
@@ -95,35 +94,35 @@ Note: `npx -y robloxstudio-mcp@latest` runs the upstream package from `boshyxd/r
 - Smart plugin polling with hot/active/idle intervals
 - Atomic apply-verify-rollback pipeline
 
-## 🏗️ Architecture
+## ðŸ—ï¸ Architecture
 
 ```
-┌─────────────────┐      stdio       ┌─────────────────┐     HTTP      ┌─────────────────┐
-│   AI Assistant   │ ◄──────────────► │   MCP Server    │ ◄───────────► │  Studio Plugin   │
-│ (Claude, Gemini, │                  │   (Node.js)     │  localhost    │   (Luau)         │
-│  Codex, etc.)    │                  │   Port 3002     │   :3002      │  Polls for work  │
-└─────────────────┘                  └─────────────────┘              └─────────────────┘
-                                            │
-                                            ▼
-                                     ┌─────────────────┐
-                                     │  Blueprint V1   │
-                                     │  (Rojo project  │
-                                     │   + sync tools) │
-                                     └─────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”      stdio       â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”     HTTP      â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚   AI Assistant   â”‚ â—„â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–º â”‚   MCP Server    â”‚ â—„â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–º â”‚  Studio Plugin   â”‚
+â”‚ (Claude, Gemini, â”‚                  â”‚   (Node.js)     â”‚  localhost    â”‚   (Luau)         â”‚
+â”‚  Codex, etc.)    â”‚                  â”‚   Port 3002     â”‚   :3002      â”‚  Polls for work  â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜              â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                            â”‚
+                                            â–¼
+                                     â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                                     â”‚  Blueprint V1   â”‚
+                                     â”‚  (Rojo project  â”‚
+                                     â”‚   + sync tools) â”‚
+                                     â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 | Component         | Location             | Purpose                                                         |
 | ----------------- | -------------------- | --------------------------------------------------------------- |
 | **MCP Server**    | `src/`               | TypeScript server implementing the MCP protocol over stdio      |
-| **HTTP Bridge**   | `src/http-server.ts` | Express server on `:3002` bridging MCP ↔ Studio plugin          |
+| **HTTP Bridge**   | `src/http-server.ts` | Express server on `:3002` bridging MCP â†” Studio plugin          |
 | **Studio Plugin** | `studio-plugin/`     | Luau plugin that polls the bridge and executes Studio API calls |
 | **Blueprint**     | `blueprint-v1/`      | Rojo project trees, property manifests, and sync state          |
 | **CLI Scripts**   | `scripts/`           | 20+ helper scripts for sync, lint, push, diagnostics            |
 
-## 🔧 MCP Tools
+## ðŸ”§ MCP Tools
 
 <details>
-<summary><strong>Instance Hierarchy</strong> — Browse and search the game tree</summary>
+<summary><strong>Instance Hierarchy</strong> â€” Browse and search the game tree</summary>
 
 | Tool                    | Description                                           |
 | ----------------------- | ----------------------------------------------------- |
@@ -139,7 +138,7 @@ Note: `npx -y robloxstudio-mcp@latest` runs the upstream package from `boshyxd/r
 </details>
 
 <details>
-<summary><strong>Script Management</strong> — Read, write, and edit Luau scripts</summary>
+<summary><strong>Script Management</strong> â€” Read, write, and edit Luau scripts</summary>
 
 | Tool                             | Description                                            |
 | -------------------------------- | ------------------------------------------------------ |
@@ -153,11 +152,11 @@ Note: `npx -y robloxstudio-mcp@latest` runs the upstream package from `boshyxd/r
 | `insert_script_lines`            | Insert lines at a specific position                    |
 | `delete_script_lines`            | Delete specific line ranges                            |
 | `batch_script_edits`             | Atomic multi-edit with rollback and hash check         |
-| `apply_and_verify_script_source` | Atomic apply → verify → rollback pipeline              |
+| `apply_and_verify_script_source` | Atomic apply â†’ verify â†’ rollback pipeline              |
 </details>
 
 <details>
-<summary><strong>Snapshots & Safety</strong> — Rollback protection</summary>
+<summary><strong>Snapshots & Safety</strong> â€” Rollback protection</summary>
 
 | Tool                       | Description                               |
 | -------------------------- | ----------------------------------------- |
@@ -168,7 +167,7 @@ Note: `npx -y robloxstudio-mcp@latest` runs the upstream package from `boshyxd/r
 </details>
 
 <details>
-<summary><strong>Properties & Objects</strong> — Modify instances and create new ones</summary>
+<summary><strong>Properties & Objects</strong> â€” Modify instances and create new ones</summary>
 
 | Tool                                  | Description                                             |
 | ------------------------------------- | ------------------------------------------------------- |
@@ -189,7 +188,7 @@ Note: `npx -y robloxstudio-mcp@latest` runs the upstream package from `boshyxd/r
 </details>
 
 <details>
-<summary><strong>Attributes & Tags</strong> — Instance metadata</summary>
+<summary><strong>Attributes & Tags</strong> â€” Instance metadata</summary>
 
 | Tool                              | Description                            |
 | --------------------------------- | -------------------------------------- |
@@ -202,7 +201,7 @@ Note: `npx -y robloxstudio-mcp@latest` runs the upstream package from `boshyxd/r
 </details>
 
 <details>
-<summary><strong>Diagnostics & Quality</strong> — Monitor and lint</summary>
+<summary><strong>Diagnostics & Quality</strong> â€” Monitor and lint</summary>
 
 | Tool                   | Description                                   |
 | ---------------------- | --------------------------------------------- |
@@ -212,14 +211,14 @@ Note: `npx -y robloxstudio-mcp@latest` runs the upstream package from `boshyxd/r
 | `lint_deprecated_apis` | Scan for deprecated Roblox API usage          |
 </details>
 
-## 🔌 Client Setup
+## ðŸ”Œ Client Setup
 
 Works with **any MCP-compatible client**.
 
-Local repository command:
+Local repository command (from project root):
 
 ```bash
-node C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js
+node dist/index.js
 ```
 
 Published package:
@@ -228,17 +227,11 @@ Published package:
 npx -y @aaronalm19/roblox-mcp@latest
 ```
 
-Upstream original package:
-
-```
-npx -y robloxstudio-mcp@latest
-```
-
 <details>
 <summary><strong>Claude Code</strong></summary>
 
 ```bash
-claude mcp add robloxstudio -- node C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js
+claude mcp add robloxstudio -- node /absolute/path/to/roblox-mcp/dist/index.js
 ```
 </details>
 
@@ -246,7 +239,7 @@ claude mcp add robloxstudio -- node C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist
 <summary><strong>Gemini CLI</strong></summary>
 
 ```bash
-gemini mcp add robloxstudio node --trust -- C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js
+gemini mcp add robloxstudio node --trust -- /absolute/path/to/roblox-mcp/dist/index.js
 ```
 </details>
 
@@ -258,7 +251,7 @@ gemini mcp add robloxstudio node --trust -- C:/Users/aaron/OneDrive/Desktop/rblx
   "mcpServers": {
     "robloxstudio-mcp": {
       "command": "node",
-      "args": ["C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js"]
+      "args": ["/absolute/path/to/roblox-mcp/dist/index.js"]
     }
   }
 }
@@ -272,7 +265,7 @@ gemini mcp add robloxstudio node --trust -- C:/Users/aaron/OneDrive/Desktop/rblx
 ```toml
 [mcp_servers.robloxstudio]
 command = "node"
-args = ["C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js"]
+args = ["/absolute/path/to/roblox-mcp/dist/index.js"]
 ```
 </details>
 
@@ -286,7 +279,7 @@ args = ["C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js"]
     "robloxstudio": {
       "type": "local",
       "enabled": true,
-      "command": ["node", "C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js"]
+      "command": ["node", "/absolute/path/to/roblox-mcp/dist/index.js"]
     }
   }
 }
@@ -300,12 +293,12 @@ If your client cannot launch `node` directly, wrap with `cmd`:
 ```json
 {
   "command": "cmd",
-  "args": ["/c", "node", "C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js"]
+  "args": ["/c", "node", "/absolute/path/to/roblox-mcp/dist/index.js"]
 }
 ```
 </details>
 
-## 📘 Blueprint V1
+## ðŸ“˜ Blueprint V1
 
 Blueprint V1 is the IDE-first source control layer built on [Rojo](https://rojo.space/). It enables bi-directional sync between your local files and Roblox Studio.
 
@@ -313,15 +306,15 @@ Blueprint V1 is the IDE-first source control layer built on [Rojo](https://rojo.
 
 ```
 blueprint-v1/
-├── places/
-│   ├── registry.json              # Place ID → slug mapping
-│   ├── .active-place.json         # Currently active place
-│   └── <slug>/
-│       ├── default.project.json   # Rojo project file
-│       ├── src/                   # Luau source tree
-│       └── properties/
-│           └── instances.json     # Non-script property manifest
-└── src/                           # Legacy fallback tree
+â”œâ”€â”€ places/
+â”‚   â”œâ”€â”€ registry.json              # Place ID â†’ slug mapping
+â”‚   â”œâ”€â”€ .active-place.json         # Currently active place
+â”‚   â””â”€â”€ <slug>/
+â”‚       â”œâ”€â”€ default.project.json   # Rojo project file
+â”‚       â”œâ”€â”€ src/                   # Luau source tree
+â”‚       â””â”€â”€ properties/
+â”‚           â””â”€â”€ instances.json     # Non-script property manifest
+â””â”€â”€ src/                           # Legacy fallback tree
 ```
 
 ### Key Commands
@@ -333,7 +326,7 @@ npm run place:list          # List all registered places
 npm run place:status        # Show resolved project/src paths
 
 # Sync
-npm run blueprint:sync      # One-shot property sync (Studio → manifest)
+npm run blueprint:sync      # One-shot property sync (Studio â†’ manifest)
 npm run blueprint:watch     # Continuous property sync
 npm run blueprint:reverse-sync  # Pull Studio changes back to local files
 
@@ -345,11 +338,11 @@ npm run luau:lint           # Luau static analysis
 npm run luau:lint:strict    # Strict mode analysis
 ```
 
-## 🛠️ Development
+## ðŸ› ï¸ Development
 
 ### Prerequisites
 
-- **Node.js** ≥ 18
+- **Node.js** â‰¥ 18
 - **Roblox Studio** with HTTP requests enabled
 - **Rojo** (recommended, for script syncing)
 
@@ -357,7 +350,7 @@ npm run luau:lint:strict    # Strict mode analysis
 
 ```bash
 npm install                 # Install dependencies
-npm run build               # Compile TypeScript → dist/
+npm run build               # Compile TypeScript â†’ dist/
 npm run build:plugin        # Build Studio plugin .rbxmx
 npm run typecheck           # Type-check without emitting
 npm test                    # Run Jest test suite
@@ -384,45 +377,45 @@ curl http://localhost:3002/diagnostics
 
 ```
 robloxstudio-mcp/
-├── src/                    # TypeScript MCP server source
-│   ├── index.ts            # MCP tool definitions and request handler
-│   ├── http-server.ts      # Express bridge server (port 3002)
-│   ├── bridge-service.ts   # Plugin communication layer
-│   └── tools/              # Tool implementation modules
-├── studio-plugin/          # Roblox Studio Luau plugin
-│   ├── plugin.server.luau  # Plugin source (polls bridge for work)
-│   └── MCPPlugin.rbxmx     # Built plugin file
-├── blueprint-v1/           # Rojo project trees and sync state
-├── scripts/                # CLI helper scripts (sync, lint, push, etc.)
-├── tests/                  # Jest + Luau E2E tests
-└── docs/                   # Additional documentation
+â”œâ”€â”€ src/                    # TypeScript MCP server source
+â”‚   â”œâ”€â”€ index.ts            # MCP tool definitions and request handler
+â”‚   â”œâ”€â”€ http-server.ts      # Express bridge server (port 3002)
+â”‚   â”œâ”€â”€ bridge-service.ts   # Plugin communication layer
+â”‚   â””â”€â”€ tools/              # Tool implementation modules
+â”œâ”€â”€ studio-plugin/          # Roblox Studio Luau plugin
+â”‚   â”œâ”€â”€ plugin.server.luau  # Plugin source (polls bridge for work)
+â”‚   â””â”€â”€ MCPPlugin.rbxmx     # Built plugin file
+â”œâ”€â”€ blueprint-v1/           # Rojo project trees and sync state
+â”œâ”€â”€ scripts/                # CLI helper scripts (sync, lint, push, etc.)
+â”œâ”€â”€ tests/                  # Jest + Luau E2E tests
+â””â”€â”€ docs/                   # Additional documentation
 ```
 
-## 🔒 Security & Privacy
+## ðŸ”’ Security & Privacy
 
-- **100% local** — all communication stays on `localhost`, nothing is sent externally
-- **No data collection** — your projects, scripts, and Studio data remain private
-- **Explicit actions only** — tools run only when invoked by your MCP client
-- **Read/write separation** — read and write tools are distinct and intentional
+- **100% local** â€” all communication stays on `localhost`, nothing is sent externally
+- **No data collection** â€” your projects, scripts, and Studio data remain private
+- **Explicit actions only** â€” tools run only when invoked by your MCP client
+- **Read/write separation** â€” read and write tools are distinct and intentional
 
-## ❓ Troubleshooting
+## â“ Troubleshooting
 
 | Problem                      | Solution                                                                 |
 | ---------------------------- | ------------------------------------------------------------------------ |
 | Plugin not in toolbar        | Verify plugin file is in the correct plugins folder, restart Studio      |
-| HTTP 403 errors              | Enable **Allow HTTP Requests** in Game Settings → Security               |
-| Plugin shows disconnected    | Normal when server isn't running — start the MCP server                  |
+| HTTP 403 errors              | Enable **Allow HTTP Requests** in Game Settings â†’ Security               |
+| Plugin shows disconnected    | Normal when server isn't running â€” start the MCP server                  |
 | No tools in AI client        | Restart your MCP client and Studio, check `http://localhost:3002/health` |
 | Large script writes are slow | Use `set_script_source_fast` or `scripts/push-script-fast.mjs`           |
 | Firewall blocking            | Allow `localhost:3002` through Windows Firewall                          |
 
-## 📚 Additional Docs
+## ðŸ“š Additional Docs
 
-- [Client Configurations](docs/CLIENTS.md) — Setup for all supported MCP clients
-- [Blueprint V1 Guide](docs/BLUEPRINT_V1.md) — Deep dive into the sync system
-- [Plugin Installation](studio-plugin/INSTALLATION.md) — Detailed plugin setup
+- [Client Configurations](docs/CLIENTS.md) â€” Setup for all supported MCP clients
+- [Blueprint V1 Guide](docs/BLUEPRINT_V1.md) â€” Deep dive into the sync system
+- [Plugin Installation](studio-plugin/INSTALLATION.md) â€” Detailed plugin setup
 
-## 🤝 Contributing
+## ðŸ¤ Contributing
 
 Contributions are welcome! Please open an issue or pull request on [GitHub](https://github.com/aaronaalmendarez/roblox-mcp).
 
@@ -434,11 +427,13 @@ npm install
 npm run dev
 ```
 
-## 🙌 Acknowledgements
+## ðŸ™Œ Acknowledgements
 
 - Original project: [`boshyxd/robloxstudio-mcp`](https://github.com/boshyxd/robloxstudio-mcp)
 - This repository extends that foundation for multi-agent workflows (Codex/OpenCode and local blueprint-first development).
 
-## 📄 License
+## ðŸ“„ License
 
-[MIT](LICENSE) © 2025
+[MIT](LICENSE) Â© 2025
+
+
