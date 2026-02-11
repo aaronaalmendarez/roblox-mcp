@@ -325,13 +325,13 @@ npm run blueprint:watch
 npm run blueprint:reverse-sync
 ```
 
-Or use the **one-command launcher** that does steps 1-5 automatically:
+Or use the **one-command launcher** that does steps 3-5 automatically:
 
 ```powershell
 npm run dev:studio -- --place <slug>
 ```
 
-> This spawns the MCP server, Rojo, property watcher, and reverse-sync in parallel. Press `Ctrl+C` to stop all.
+> This resolves the existing place context, then spawns the MCP server, Rojo, property watcher, and reverse-sync in parallel. It does **not** run `place:detect` — you must register the place first. Press `Ctrl+C` to stop all.
 
 ---
 
@@ -398,14 +398,14 @@ Polling every 2000ms...
 
 ### 4. Source of Truth Rules
 
-| Situation                                       | Who Wins               | Action                                                    |
-| :---------------------------------------------- | :--------------------- | :-------------------------------------------------------- |
-| You edited a `.luau` file locally               | **Local wins**         | Rojo pushes to Studio automatically                       |
-| You edited a script inside Studio               | **Studio wins**        | Run `npm run blueprint:reverse-sync` to pull changes back |
-| Both sides changed the same script              | **Neither** — conflict | A `.conflict` file is written; you manually merge         |
-| Non-script property changed in Studio           | **Studio wins**        | Run `npm run blueprint:sync` to capture it                |
-| Non-script property changed in `instances.json` | **Local wins**         | Run `npm run blueprint:sync` to push to Studio            |
-| You aren't sure what changed                    | **Check first**        | Run `npm run drift:check` to compare hashes               |
+| Situation                                       | Who Wins               | Action                                                        |
+| :---------------------------------------------- | :--------------------- | :------------------------------------------------------------ |
+| You edited a `.luau` file locally               | **Local wins**         | Rojo pushes to Studio automatically                           |
+| You edited a script inside Studio               | **Studio wins**        | Run `npm run blueprint:reverse-sync` to pull changes back     |
+| Both sides changed the same script              | **Neither** — conflict | A conflict snapshot folder is written; you manually merge     |
+| Non-script property changed in Studio           | **Studio wins**        | No automated pull — manually update `instances.json` to match |
+| Non-script property changed in `instances.json` | **Local wins**         | Run `npm run blueprint:sync` to push to Studio                |
+| You aren't sure what changed                    | **Check first**        | Run `npm run drift:check` to compare hashes                   |
 
 **Golden rule:** Edit scripts in your IDE (Rojo syncs them). Edit non-script properties via `instances.json`. Only reverse-sync when you intentionally made Studio-side script changes.
 
@@ -441,21 +441,24 @@ Instance: game.ReplicatedStorage.HorrorConfig        (ModuleScript)
 
 ### 6. Conflict Handling
 
-When reverse-sync detects **both local and Studio changed** the same script, it writes a conflict file instead of overwriting:
+When reverse-sync detects **both local and Studio changed** the same script, it writes a conflict snapshot folder instead of overwriting:
 
 ```
 blueprint-v1/places/<slug>/.reverse-sync-conflicts/
 └── ServerScriptService/
-    └── HorrorMain.server.luau.conflict
+    └── HorrorMain.server.luau/
+        ├── local.luau       # Your local version at time of conflict
+        ├── studio.luau      # The Studio version that diverged
+        └── meta.json        # Timestamps, hashes, instance path
 ```
 
 **Recovery workflow:**
 
-1. Open the `.conflict` file — this is the Studio version
-2. Open the original `.luau` file — this is your local version
-3. Manually merge the changes you want to keep
-4. Delete the `.conflict` file
-5. Run `npm run blueprint:reverse-sync` again — it will re-baseline
+1. Open the conflict folder (e.g. `.reverse-sync-conflicts/ServerScriptService/HorrorMain.server.luau/`)
+2. Compare `local.luau` (your version) vs `studio.luau` (Studio's version)
+3. Manually merge the changes into the original `.luau` file in `src/`
+4. Delete the conflict folder
+5. Run `npm run blueprint:reverse-sync` again — it will re-baseline from the merged file
 
 **State tracking:** Each tracked script's hashes are stored in:
 ```
