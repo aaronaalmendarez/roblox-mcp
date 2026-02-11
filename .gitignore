@@ -51,6 +51,8 @@ coverage/
 # Temporary folders
 tmp/
 temp/
+.cache/
+.tools/
 
 # AI-generated content
 banner-prompt.txt

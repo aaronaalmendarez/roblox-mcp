@@ -121,6 +121,26 @@ npm run place:list
    - watch: `npm run blueprint:watch`
 6. Reverse sync (guarded): `npm run blueprint:reverse-sync`
 
+## 11) Luau lint integration
+
+Install official Luau CLI:
+
+```powershell
+npm run luau:install
+```
+
+Lint active place source:
+
+```powershell
+npm run luau:lint
+```
+
+Strict lint (fails on findings):
+
+```powershell
+npm run luau:lint:strict
+```
+
 ## 10) Troubleshooting
 
 If MCP says enabled but has no tools:
@@ -133,4 +153,3 @@ If MCP says enabled but has no tools:
 If full-source writes are slow:
 
 - Prefer `node scripts/push-script-fast.mjs --instance <path> --file <file>`.
-

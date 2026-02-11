@@ -222,14 +222,21 @@ function defaultProjectJson(name) {
     name: name || 'RobloxPlaceBlueprint',
     tree: {
       $className: 'DataModel',
+      Workspace: { $path: 'src/Workspace' },
+      Lighting: { $path: 'src/Lighting' },
       ReplicatedStorage: { $path: 'src/ReplicatedStorage' },
+      ReplicatedFirst: { $path: 'src/ReplicatedFirst' },
       ServerScriptService: { $path: 'src/ServerScriptService' },
       ServerStorage: { $path: 'src/ServerStorage' },
+      StarterGui: { $path: 'src/StarterGui' },
       StarterPlayer: {
+        StarterCharacterScripts: { $path: 'src/StarterPlayer/StarterCharacterScripts' },
         StarterPlayerScripts: { $path: 'src/StarterPlayer/StarterPlayerScripts' },
       },
-      StarterGui: { $path: 'src/StarterGui' },
-      Workspace: { $path: 'src/Workspace' },
+      StarterPack: { $path: 'src/StarterPack' },
+      Teams: { $path: 'src/Teams' },
+      SoundService: { $path: 'src/SoundService' },
+      TextChatService: { $path: 'src/TextChatService' },
     },
   };
 }
@@ -281,12 +288,19 @@ function defaultSchemaJson() {
 
 export async function scaffoldPlaceFiles(paths, displayName) {
   await fs.mkdir(paths.src, { recursive: true });
+  await fs.mkdir(path.join(paths.src, 'Workspace'), { recursive: true });
+  await fs.mkdir(path.join(paths.src, 'Lighting'), { recursive: true });
   await fs.mkdir(path.join(paths.src, 'ReplicatedStorage'), { recursive: true });
+  await fs.mkdir(path.join(paths.src, 'ReplicatedFirst'), { recursive: true });
   await fs.mkdir(path.join(paths.src, 'ServerScriptService'), { recursive: true });
   await fs.mkdir(path.join(paths.src, 'ServerStorage'), { recursive: true });
-  await fs.mkdir(path.join(paths.src, 'StarterPlayer', 'StarterPlayerScripts'), { recursive: true });
   await fs.mkdir(path.join(paths.src, 'StarterGui'), { recursive: true });
-  await fs.mkdir(path.join(paths.src, 'Workspace'), { recursive: true });
+  await fs.mkdir(path.join(paths.src, 'StarterPack'), { recursive: true });
+  await fs.mkdir(path.join(paths.src, 'Teams'), { recursive: true });
+  await fs.mkdir(path.join(paths.src, 'SoundService'), { recursive: true });
+  await fs.mkdir(path.join(paths.src, 'TextChatService'), { recursive: true });
+  await fs.mkdir(path.join(paths.src, 'StarterPlayer', 'StarterCharacterScripts'), { recursive: true });
+  await fs.mkdir(path.join(paths.src, 'StarterPlayer', 'StarterPlayerScripts'), { recursive: true });
   await fs.mkdir(paths.propertiesDir, { recursive: true });
   await fs.mkdir(paths.conflictDir, { recursive: true });
 
@@ -420,4 +434,3 @@ export async function setActivePlaceByKey(placeKey) {
   const active = await setActiveSelection(place);
   return { place, active };
 }
-

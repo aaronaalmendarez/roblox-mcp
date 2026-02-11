@@ -99,6 +99,8 @@ Run all:
 
 ```powershell
 npm run blueprint:doctor
+npm run luau:install
+npm run luau:lint
 npm run typecheck
 npm test -- --runInBand
 ```

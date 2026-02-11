@@ -333,6 +333,18 @@ npm run drift:check -- --map game.ServerScriptService.TycoonMain=blueprint-v1/pl
 # deprecation lint (e.g., GetCollisionGroups)
 npm run lint:deprecated
 
+# install official Luau CLI from luau-lang releases
+npm run luau:install
+
+# Luau lint/analyze for active place src
+npm run luau:lint
+
+# strict mode lint/analyze
+npm run luau:lint:strict
+
+# include Roblox global diagnostics too (game/workspace/Instance/etc.)
+node scripts/luau-lint.mjs --include-roblox-globals --json
+
 # safe apply + verify
 npm run apply:verify -- --instance game.ServerScriptService.TycoonMain --file blueprint-v1/places/<slug>/src/ServerScriptService/TycoonMain.server.luau --needle "local Players"
 

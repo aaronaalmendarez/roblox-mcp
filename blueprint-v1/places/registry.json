@@ -10,8 +10,18 @@
       "tags": [],
       "createdAt": "2026-02-11T10:00:55.912Z",
       "lastSeenAt": "2026-02-11T10:04:07.929Z"
+    },
+    "107695352637392": {
+      "placeId": 107695352637392,
+      "gameId": 9708422540,
+      "slug": "place3",
+      "displayName": "Place3",
+      "detectedPlaceName": "Place3",
+      "tags": [],
+      "createdAt": "2026-02-11T10:10:37.511Z",
+      "lastSeenAt": "2026-02-11T10:10:37.511Z"
     }
   },
   "createdAt": "2026-02-11T10:00:55.894Z",
-  "updatedAt": "2026-02-11T10:04:07.930Z"
+  "updatedAt": "2026-02-11T10:10:37.511Z"
 }
