@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Roblox Blueprint Property Manifest",
+  "type": "object",
+  "required": ["instances"],
+  "properties": {
+    "instances": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Roblox instance path, e.g. game.Workspace.Baseplate"
+          },
+          "properties": {
+            "type": "object",
+            "description": "Property map applied via set_property"
+          },
+          "attributes": {
+            "type": "object",
+            "description": "Attribute map applied via set_attribute"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "CollectionService tags applied via add_tag"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

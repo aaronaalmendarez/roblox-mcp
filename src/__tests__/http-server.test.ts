@@ -153,6 +153,44 @@ describe('HTTP Server', () => {
 
       expect(app.isPluginConnected()).toBe(true);
     });
+
+    test('should capture plugin version and capabilities from poll headers', async () => {
+      const capabilities = {
+        setScriptSourceFast: true,
+        batchScriptEdits: true
+      };
+
+      await request(app)
+        .get('/poll')
+        .set('X-MCP-Plugin-Version', '1.9.1')
+        .set('X-MCP-Plugin-Capabilities', JSON.stringify(capabilities))
+        .expect(503);
+
+      const health = await request(app).get('/health').expect(200);
+      expect(health.body.plugin.version).toBe('1.9.1');
+      expect(health.body.plugin.capabilities).toEqual(capabilities);
+      expect(health.body.plugin.lastReportedAt).toBeGreaterThan(0);
+    });
+
+    test('should capture plugin version and capabilities from poll query params', async () => {
+      const capabilities = {
+        fullSourceReads: true,
+        adaptivePolling: true
+      };
+
+      await request(app)
+        .get('/poll')
+        .query({
+          v: '1.9.1',
+          caps: JSON.stringify(capabilities)
+        })
+        .expect(503);
+
+      const health = await request(app).get('/health').expect(200);
+      expect(health.body.plugin.version).toBe('1.9.1');
+      expect(health.body.plugin.capabilities).toEqual(capabilities);
+      expect(health.body.plugin.lastReportedAt).toBeGreaterThan(0);
+    });
   });
 
   describe('Response Handling', () => {
@@ -249,6 +287,8 @@ describe('HTTP Server', () => {
       });
       expect(response.body.lastMCPActivity).toBeGreaterThan(0);
       expect(response.body.uptime).toBeGreaterThan(0);
+      expect(response.body.bridge).toBeTruthy();
+      expect(response.body.bridge.totalRequests).toBeGreaterThanOrEqual(0);
     });
   });
 });

@@ -1,11 +1,254 @@
 import { StudioHttpClient } from './studio-client.js';
 import { BridgeService } from '../bridge-service.js';
+import { createHash } from 'crypto';
+import { gunzipSync } from 'zlib';
+import { readFile, readdir } from 'fs/promises';
+import path from 'path';
+
+type ScriptEditReplaceOperation = {
+  op: 'replace';
+  startLine: number;
+  endLine: number;
+  newContent: string;
+};
+
+type ScriptEditInsertOperation = {
+  op: 'insert';
+  afterLine: number;
+  newContent: string;
+};
+
+type ScriptEditDeleteOperation = {
+  op: 'delete';
+  startLine: number;
+  endLine: number;
+};
+
+type ScriptEditOperation = ScriptEditReplaceOperation | ScriptEditInsertOperation | ScriptEditDeleteOperation;
+type ScriptSnapshotRecord = {
+  id: string;
+  instancePath: string;
+  label: string;
+  source: string;
+  sourceHash: string;
+  createdAt: number;
+  sourceLength: number;
+};
+type WriteQueueItem<T> = {
+  id: string;
+  priority: number;
+  label: string;
+  run: () => Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: any) => void;
+  createdAt: number;
+  cancelled: boolean;
+};
 
 export class RobloxStudioTools {
   private client: StudioHttpClient;
+  private static readonly DIRECT_WRITE_THRESHOLD = 100_000;
+  private fastEndpointSupport: 'unknown' | 'yes' | 'no' = 'unknown';
+  private writeQueue: WriteQueueItem<any>[] = [];
+  private writeInFlight: WriteQueueItem<any> | null = null;
+  private writeQueueSeq = 0;
+  private completedWrites = 0;
+  private failedWrites = 0;
+  private scriptSnapshots: Map<string, ScriptSnapshotRecord> = new Map();
+  private scriptSnapshotSeq = 0;
+  private readonly maxSnapshots = 250;
 
   constructor(bridge: BridgeService) {
     this.client = new StudioHttpClient(bridge);
+  }
+
+  private hashSource(source: string) {
+    return createHash('sha256').update(source, 'utf8').digest('hex');
+  }
+
+  private extractSource(response: any): string {
+    if (response && typeof response.source === 'string') {
+      return response.source;
+    }
+    return '';
+  }
+
+  private compactScriptWriteResponse(response: any) {
+    const base = (response && typeof response === 'object') ? { ...response } : {};
+    const payload = (base as any).propertyValue;
+    delete (base as any).propertyValue;
+
+    if (typeof payload === 'string') {
+      (base as any).payloadBytes = Buffer.byteLength(payload, 'utf8');
+      (base as any).payloadChars = payload.length;
+    }
+
+    return base;
+  }
+
+  private normalizeSource(source: string) {
+    return source.replace(/\r\n/g, '\n');
+  }
+
+  private nextSnapshotId() {
+    this.scriptSnapshotSeq += 1;
+    return `ss_${this.scriptSnapshotSeq}`;
+  }
+
+  private pushSnapshot(instancePath: string, source: string, label?: string) {
+    const normalized = this.normalizeSource(source);
+    const record: ScriptSnapshotRecord = {
+      id: this.nextSnapshotId(),
+      instancePath,
+      label: label || 'manual',
+      source: normalized,
+      sourceHash: this.hashSource(normalized),
+      createdAt: Date.now(),
+      sourceLength: normalized.length,
+    };
+    this.scriptSnapshots.set(record.id, record);
+    if (this.scriptSnapshots.size > this.maxSnapshots) {
+      const ordered = [...this.scriptSnapshots.values()].sort((a, b) => a.createdAt - b.createdAt);
+      while (ordered.length > this.maxSnapshots) {
+        const evict = ordered.shift();
+        if (evict) {
+          this.scriptSnapshots.delete(evict.id);
+        }
+      }
+    }
+    return record;
+  }
+
+  private async processWriteQueue() {
+    if (this.writeInFlight || this.writeQueue.length === 0) {
+      return;
+    }
+
+    this.writeQueue.sort((a, b) => {
+      if (a.priority === b.priority) {
+        return a.createdAt - b.createdAt;
+      }
+      return b.priority - a.priority;
+    });
+
+    const item = this.writeQueue.shift()!;
+    if (item.cancelled) {
+      item.reject(new Error(`Write job cancelled: ${item.label}`));
+      void this.processWriteQueue();
+      return;
+    }
+
+    this.writeInFlight = item;
+    try {
+      const result = await item.run();
+      this.completedWrites += 1;
+      item.resolve(result);
+    } catch (error) {
+      this.failedWrites += 1;
+      item.reject(error);
+    } finally {
+      this.writeInFlight = null;
+      void this.processWriteQueue();
+    }
+  }
+
+  private enqueueWrite<T>(label: string, run: () => Promise<T>, priority: number = 0): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const item: WriteQueueItem<T> = {
+        id: `wq_${++this.writeQueueSeq}`,
+        priority,
+        label,
+        run,
+        resolve,
+        reject,
+        createdAt: Date.now(),
+        cancelled: false,
+      };
+      this.writeQueue.push(item);
+      void this.processWriteQueue();
+    });
+  }
+
+  getWriteQueueStats() {
+    return {
+      inFlight: this.writeInFlight ? {
+        id: this.writeInFlight.id,
+        label: this.writeInFlight.label,
+        priority: this.writeInFlight.priority,
+        ageMs: Date.now() - this.writeInFlight.createdAt,
+      } : null,
+      pending: this.writeQueue.length,
+      pendingItems: this.writeQueue.map((x) => ({
+        id: x.id,
+        label: x.label,
+        priority: x.priority,
+        ageMs: Date.now() - x.createdAt,
+      })),
+      completedWrites: this.completedWrites,
+      failedWrites: this.failedWrites,
+    };
+  }
+
+  cancelPendingWrites(prefix?: string) {
+    let cancelled = 0;
+    for (const item of this.writeQueue) {
+      if (!prefix || item.label.startsWith(prefix)) {
+        item.cancelled = true;
+        cancelled += 1;
+      }
+    }
+    this.writeQueue = this.writeQueue.filter((x) => !x.cancelled);
+    return { cancelled };
+  }
+
+  private async fastWriteSource(instancePath: string, source: string, verify: boolean = true) {
+    if (this.fastEndpointSupport === 'no') {
+      const fallback = await this.client.request('/api/set-property', {
+        instancePath,
+        propertyName: 'Source',
+        propertyValue: source,
+      });
+
+      return this.compactScriptWriteResponse({
+        ...fallback,
+        method: 'fast-fallback-property',
+        fallback: true,
+        message: 'Script source updated via set_property fallback (plugin missing fast endpoint).',
+      });
+    }
+
+    try {
+      const response = await this.client.request('/api/set-script-source-fast', {
+        instancePath,
+        source,
+        verify,
+      });
+      this.fastEndpointSupport = 'yes';
+      return this.compactScriptWriteResponse({
+        ...response,
+        fallback: false,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes('Unknown endpoint: /api/set-script-source-fast')) {
+        throw error;
+      }
+      this.fastEndpointSupport = 'no';
+
+      // Backward-compatible fallback for older plugin versions.
+      const fallback = await this.client.request('/api/set-property', {
+        instancePath,
+        propertyName: 'Source',
+        propertyValue: source,
+      });
+
+      return this.compactScriptWriteResponse({
+        ...fallback,
+        method: 'fast-fallback-property',
+        fallback: true,
+        message: 'Script source updated via set_property fallback (plugin missing fast endpoint).',
+      });
+    }
   }
 
   // File System Tools
@@ -427,11 +670,458 @@ export class RobloxStudioTools {
     };
   }
 
-  async setScriptSource(instancePath: string, source: string) {
+  async getRuntimeState() {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            writeQueue: this.getWriteQueueStats(),
+            fastEndpointSupport: this.fastEndpointSupport,
+            snapshots: {
+              count: this.scriptSnapshots.size,
+              max: this.maxSnapshots,
+            },
+          }, null, 2)
+        }
+      ]
+    };
+  }
+
+  async getDiagnostics() {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            runtime: {
+              writeQueue: this.getWriteQueueStats(),
+              fastEndpointSupport: this.fastEndpointSupport,
+            },
+            snapshots: {
+              count: this.scriptSnapshots.size,
+              max: this.maxSnapshots,
+              latest: [...this.scriptSnapshots.values()]
+                .sort((a, b) => b.createdAt - a.createdAt)
+                .slice(0, 10)
+                .map((x) => ({
+                  id: x.id,
+                  instancePath: x.instancePath,
+                  label: x.label,
+                  sourceHash: x.sourceHash,
+                  sourceLength: x.sourceLength,
+                  createdAt: x.createdAt,
+                })),
+            },
+          }, null, 2)
+        }
+      ]
+    };
+  }
+
+  async createScriptSnapshot(instancePath: string, label?: string) {
+    if (!instancePath) {
+      throw new Error('Instance path is required for create_script_snapshot');
+    }
+    const response = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+    const source = this.extractSource(response);
+    const record = this.pushSnapshot(instancePath, source, label);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            snapshotId: record.id,
+            instancePath: record.instancePath,
+            label: record.label,
+            sourceHash: record.sourceHash,
+            sourceLength: record.sourceLength,
+            createdAt: record.createdAt,
+          }, null, 2)
+        }
+      ]
+    };
+  }
+
+  async listScriptSnapshots(instancePath?: string) {
+    const list = [...this.scriptSnapshots.values()]
+      .filter((x) => !instancePath || x.instancePath === instancePath)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map((x) => ({
+        id: x.id,
+        instancePath: x.instancePath,
+        label: x.label,
+        sourceHash: x.sourceHash,
+        sourceLength: x.sourceLength,
+        createdAt: x.createdAt,
+      }));
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            count: list.length,
+            snapshots: list,
+          }, null, 2)
+        }
+      ]
+    };
+  }
+
+  async rollbackScriptSnapshot(snapshotId: string, verify: boolean = true) {
+    if (!snapshotId) {
+      throw new Error('Snapshot id is required for rollback_script_snapshot');
+    }
+    const record = this.scriptSnapshots.get(snapshotId);
+    if (!record) {
+      throw new Error(`Snapshot not found: ${snapshotId}`);
+    }
+
+    const response = await this.enqueueWrite(
+      `rollback_script_snapshot:${record.instancePath}`,
+      async () => this.fastWriteSource(record.instancePath, record.source, verify),
+      12,
+    );
+
+    const verifyResponse = await this.client.request('/api/get-script-source', { instancePath: record.instancePath, fullSource: true });
+    const currentSource = this.normalizeSource(this.extractSource(verifyResponse));
+    const currentHash = this.hashSource(currentSource);
+    const restored = currentHash === record.sourceHash;
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: restored,
+            snapshotId: record.id,
+            instancePath: record.instancePath,
+            expectedHash: record.sourceHash,
+            currentHash,
+            response,
+          }, null, 2)
+        }
+      ]
+    };
+  }
+
+  async applyAndVerifyScriptSource(
+    instancePath: string,
+    source: string,
+    expectedHash?: string,
+    verifyNeedle?: string,
+    rollbackOnFailure: boolean = true,
+    preferFast?: boolean,
+  ) {
+    if (!instancePath || typeof source !== 'string') {
+      throw new Error('Instance path and source are required for apply_and_verify_script_source');
+    }
+
+    const beforeResponse = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+    const beforeSource = this.normalizeSource(this.extractSource(beforeResponse));
+    const beforeHash = this.hashSource(beforeSource);
+    if (expectedHash && expectedHash !== beforeHash) {
+      throw new Error(`Expected hash mismatch for ${instancePath}. Expected ${expectedHash} but found ${beforeHash}.`);
+    }
+
+    const snapshot = this.pushSnapshot(instancePath, beforeSource, 'apply_and_verify:prewrite');
+    const useFast = preferFast === true || source.length > RobloxStudioTools.DIRECT_WRITE_THRESHOLD;
+    const normalizedTarget = this.normalizeSource(source);
+    const targetHash = this.hashSource(normalizedTarget);
+
+    let writeResponse: any;
+    try {
+      writeResponse = await this.enqueueWrite(
+        `apply_and_verify:${instancePath}`,
+        async () => (useFast
+          ? this.fastWriteSource(instancePath, source, true)
+          : this.client.request('/api/set-script-source', { instancePath, source, preferDirect: false })),
+        11,
+      );
+    } catch (error) {
+      throw new Error(`Failed to apply source for ${instancePath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    const afterResponse = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+    const afterSource = this.normalizeSource(this.extractSource(afterResponse));
+    const afterHash = this.hashSource(afterSource);
+    const matchesHash = afterHash === targetHash;
+    const matchesNeedle = typeof verifyNeedle === 'string' ? afterSource.includes(verifyNeedle) : true;
+
+    if (matchesHash && matchesNeedle) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: true,
+              instancePath,
+              snapshotId: snapshot.id,
+              beforeHash,
+              targetHash,
+              afterHash,
+              verifyNeedle: verifyNeedle || null,
+              writeResponse: this.compactScriptWriteResponse(writeResponse),
+            }, null, 2)
+          }
+        ]
+      };
+    }
+
+    let rollbackStatus: 'skipped' | 'succeeded' | 'failed' = 'skipped';
+    if (rollbackOnFailure) {
+      try {
+        await this.enqueueWrite(
+          `apply_and_verify_rollback:${instancePath}`,
+          async () => this.fastWriteSource(instancePath, beforeSource, true),
+          13,
+        );
+        rollbackStatus = 'succeeded';
+      } catch {
+        rollbackStatus = 'failed';
+      }
+    }
+
+    throw new Error(
+      `Post-write verification failed for ${instancePath}. ` +
+      `hashMatch=${matchesHash}, needleMatch=${matchesNeedle}, rollback=${rollbackStatus}, snapshotId=${snapshot.id}`
+    );
+  }
+
+  async checkScriptDrift(
+    mappings: Array<{ instancePath: string; localFile: string }>,
+    normalizeLineEndings: boolean = true,
+  ) {
+    if (!Array.isArray(mappings) || mappings.length === 0) {
+      throw new Error('At least one mapping is required for check_script_drift');
+    }
+
+    const results: Array<any> = [];
+    for (const mapping of mappings) {
+      const instancePath = mapping?.instancePath;
+      const localFile = mapping?.localFile;
+      if (!instancePath || !localFile) {
+        results.push({
+          instancePath: instancePath || null,
+          localFile: localFile || null,
+          status: 'invalid',
+          reason: 'instancePath and localFile are required',
+        });
+        continue;
+      }
+
+      let localSource = '';
+      try {
+        localSource = await readFile(localFile, 'utf8');
+      } catch (error) {
+        results.push({
+          instancePath,
+          localFile,
+          status: 'local-read-error',
+          reason: error instanceof Error ? error.message : String(error),
+        });
+        continue;
+      }
+
+      let studioSource = '';
+      try {
+        const studio = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+        studioSource = this.extractSource(studio);
+      } catch (error) {
+        results.push({
+          instancePath,
+          localFile,
+          status: 'studio-read-error',
+          reason: error instanceof Error ? error.message : String(error),
+        });
+        continue;
+      }
+
+      const normalizedLocal = normalizeLineEndings ? this.normalizeSource(localSource) : localSource;
+      const normalizedStudio = normalizeLineEndings ? this.normalizeSource(studioSource) : studioSource;
+      const localHash = this.hashSource(normalizedLocal);
+      const studioHash = this.hashSource(normalizedStudio);
+      results.push({
+        instancePath,
+        localFile,
+        status: localHash === studioHash ? 'in-sync' : 'drift',
+        localHash,
+        studioHash,
+        localLength: normalizedLocal.length,
+        studioLength: normalizedStudio.length,
+      });
+    }
+
+    const summary = {
+      total: results.length,
+      inSync: results.filter((x) => x.status === 'in-sync').length,
+      drift: results.filter((x) => x.status === 'drift').length,
+      failures: results.filter((x) => x.status !== 'in-sync' && x.status !== 'drift').length,
+    };
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({ summary, results }, null, 2)
+        }
+      ]
+    };
+  }
+
+  async lintDeprecatedApis(rootPath: string = process.cwd()) {
+    const findings: Array<{ file: string; line: number; match: string; suggestion: string }> = [];
+    const ignores = new Set(['node_modules', '.git', 'dist']);
+    const exts = new Set(['.lua', '.luau']);
+    const target = 'GetCollisionGroups';
+
+    const walk = async (dir: string): Promise<void> => {
+      const entries = await readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (!ignores.has(entry.name)) {
+            await walk(full);
+          }
+          continue;
+        }
+        const ext = path.extname(entry.name).toLowerCase();
+        if (!exts.has(ext)) {
+          continue;
+        }
+        let source = '';
+        try {
+          source = await readFile(full, 'utf8');
+        } catch {
+          continue;
+        }
+        const lines = source.split(/\r?\n/);
+        for (let i = 0; i < lines.length; i += 1) {
+          if (lines[i].includes(target)) {
+            findings.push({
+              file: full,
+              line: i + 1,
+              match: target,
+              suggestion: 'Use PhysicsService:GetRegisteredCollisionGroups() instead.',
+            });
+          }
+        }
+      }
+    };
+
+    await walk(rootPath);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            rootPath,
+            findings,
+            totalFindings: findings.length,
+          }, null, 2)
+        }
+      ]
+    };
+  }
+
+  async getScriptSnapshot(instancePath: string, startLine?: number, endLine?: number) {
+    if (!instancePath) {
+      throw new Error('Instance path is required for get_script_snapshot');
+    }
+
+    const response = await this.client.request('/api/get-script-source', {
+      instancePath,
+      startLine,
+      endLine,
+      fullSource: !startLine && !endLine,
+    });
+    const source = this.extractSource(response);
+    const snapshot = {
+      ...response,
+      sourceHash: this.hashSource(source),
+    };
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(snapshot, null, 2)
+        }
+      ]
+    };
+  }
+
+  async setScriptSource(instancePath: string, source: string, expectedHash?: string) {
     if (!instancePath || typeof source !== 'string') {
       throw new Error('Instance path and source code string are required for set_script_source');
     }
-    const response = await this.client.request('/api/set-script-source', { instancePath, source });
+
+    let currentHash: string | null = null;
+    if (expectedHash) {
+      const snapshotResponse = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+      const currentSource = this.extractSource(snapshotResponse);
+      currentHash = this.hashSource(currentSource);
+      if (currentHash !== expectedHash) {
+        throw new Error(
+          `Script hash mismatch for ${instancePath}. Expected ${expectedHash} but found ${currentHash}. Reload the script and reapply your edit.`
+        );
+      }
+    }
+
+    const response = await this.enqueueWrite(
+      `set_script_source:${instancePath}`,
+      async () => {
+        const useFastPath = source.length > RobloxStudioTools.DIRECT_WRITE_THRESHOLD;
+        return useFastPath
+          ? this.fastWriteSource(instancePath, source, true)
+          : this.client.request('/api/set-script-source', {
+              instancePath,
+              source,
+              preferDirect: false,
+            });
+      },
+      5,
+    );
+    let newHash: string | null = null;
+    if (expectedHash) {
+      const updatedSource = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+      newHash = this.hashSource(this.extractSource(updatedSource));
+    }
+
+    const payload = {
+      ...this.compactScriptWriteResponse(response),
+      expectedHash: expectedHash || null,
+      previousHash: currentHash,
+      newHash
+    };
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(payload, null, 2)
+        }
+      ]
+    };
+  }
+
+  async setScriptSourceChecked(instancePath: string, source: string, expectedHash: string) {
+    if (!expectedHash) {
+      throw new Error('Expected hash is required for set_script_source_checked');
+    }
+    return this.setScriptSource(instancePath, source, expectedHash);
+  }
+
+  async setScriptSourceFast(instancePath: string, source: string, verify: boolean = true) {
+    if (!instancePath || typeof source !== 'string') {
+      throw new Error('Instance path and source code string are required for set_script_source_fast');
+    }
+    const response = await this.enqueueWrite(
+      `set_script_source_fast:${instancePath}`,
+      async () => this.fastWriteSource(instancePath, source, verify),
+      10,
+    );
     return {
       content: [
         {
@@ -442,17 +1132,114 @@ export class RobloxStudioTools {
     };
   }
 
+  async setScriptSourceFastGzip(instancePath: string, sourceGzipBase64: string, verify: boolean = true) {
+    if (!instancePath || typeof sourceGzipBase64 !== 'string' || sourceGzipBase64.length === 0) {
+      throw new Error('Instance path and sourceGzipBase64 are required for set_script_source_fast_gzip');
+    }
+    const source = gunzipSync(Buffer.from(sourceGzipBase64, 'base64')).toString('utf8');
+    return this.setScriptSourceFast(instancePath, source, verify);
+  }
+
   // Partial Script Editing Tools
   async editScriptLines(instancePath: string, startLine: number, endLine: number, newContent: string) {
     if (!instancePath || !startLine || !endLine || typeof newContent !== 'string') {
       throw new Error('Instance path, startLine, endLine, and newContent are required for edit_script_lines');
     }
-    const response = await this.client.request('/api/edit-script-lines', { instancePath, startLine, endLine, newContent });
+    const response = await this.enqueueWrite(
+      `edit_script_lines:${instancePath}`,
+      async () => this.client.request('/api/edit-script-lines', { instancePath, startLine, endLine, newContent }),
+      8,
+    );
     return {
       content: [
         {
           type: 'text',
           text: JSON.stringify(response, null, 2)
+        }
+      ]
+    };
+  }
+
+  async batchScriptEdits(
+    instancePath: string,
+    operations: ScriptEditOperation[],
+    expectedHash?: string,
+    rollbackOnFailure: boolean = true,
+    fastMode: boolean = false
+  ) {
+    if (!instancePath) {
+      throw new Error('Instance path is required for batch_script_edits');
+    }
+    if (!Array.isArray(operations) || operations.length === 0) {
+      throw new Error('At least one operation is required for batch_script_edits');
+    }
+
+    const needsSnapshot = Boolean(expectedHash) || rollbackOnFailure || !fastMode;
+    let originalSource: string | null = null;
+    let originalHash: string | null = null;
+
+    if (needsSnapshot) {
+      const snapshotResponse = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+      originalSource = this.extractSource(snapshotResponse);
+      originalHash = this.hashSource(originalSource);
+    }
+
+    if (expectedHash && expectedHash !== originalHash) {
+      throw new Error(
+        `Script hash mismatch for ${instancePath}. Expected ${expectedHash} but found ${originalHash}.`
+      );
+    }
+
+    try {
+      await this.enqueueWrite(
+        `batch_script_edits:${instancePath}`,
+        async () => this.client.request('/api/batch-script-edits', {
+          instancePath,
+          operations,
+          rollbackOnFailure
+        }),
+        9,
+      );
+    } catch (error) {
+      let rollbackSucceeded = false;
+      if (rollbackOnFailure && originalSource !== null) {
+        try {
+          await this.client.request('/api/set-script-source', {
+            instancePath,
+            source: originalSource,
+            preferDirect: originalSource.length > RobloxStudioTools.DIRECT_WRITE_THRESHOLD,
+          });
+          rollbackSucceeded = true;
+        } catch {
+          rollbackSucceeded = false;
+        }
+      }
+
+      throw new Error(
+        `Batch edit failed for ${operations.length} operations. ` +
+        `Rollback ${rollbackOnFailure ? (rollbackSucceeded ? 'succeeded' : 'failed') : 'skipped'}. ` +
+        `Cause: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    let newHash: string | null = null;
+    if (!fastMode) {
+      const finalResponse = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+      newHash = this.hashSource(this.extractSource(finalResponse));
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            instancePath,
+            operationsApplied: operations.length,
+            originalHash,
+            newHash,
+            fastMode
+          }, null, 2)
         }
       ]
     };
@@ -462,7 +1249,11 @@ export class RobloxStudioTools {
     if (!instancePath || typeof newContent !== 'string') {
       throw new Error('Instance path and newContent are required for insert_script_lines');
     }
-    const response = await this.client.request('/api/insert-script-lines', { instancePath, afterLine: afterLine || 0, newContent });
+    const response = await this.enqueueWrite(
+      `insert_script_lines:${instancePath}`,
+      async () => this.client.request('/api/insert-script-lines', { instancePath, afterLine: afterLine || 0, newContent }),
+      8,
+    );
     return {
       content: [
         {
@@ -477,7 +1268,11 @@ export class RobloxStudioTools {
     if (!instancePath || !startLine || !endLine) {
       throw new Error('Instance path, startLine, and endLine are required for delete_script_lines');
     }
-    const response = await this.client.request('/api/delete-script-lines', { instancePath, startLine, endLine });
+    const response = await this.enqueueWrite(
+      `delete_script_lines:${instancePath}`,
+      async () => this.client.request('/api/delete-script-lines', { instancePath, startLine, endLine }),
+      8,
+    );
     return {
       content: [
         {

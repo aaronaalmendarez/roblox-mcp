@@ -113,6 +113,30 @@ describe('BridgeService', () => {
     });
   });
 
+  describe('Stats', () => {
+    test('should expose bridge stats and update counts', async () => {
+      const statsStart = bridgeService.getStats();
+      expect(statsStart.totalRequests).toBe(0);
+      expect(statsStart.inFlightRequests).toBe(0);
+
+      const requestPromise = bridgeService.sendRequest('/api/test', { foo: 'bar' });
+      const pending = bridgeService.getPendingRequest();
+      expect(pending).toBeTruthy();
+
+      const statsPending = bridgeService.getStats();
+      expect(statsPending.totalRequests).toBe(1);
+      expect(statsPending.inFlightRequests).toBe(1);
+
+      bridgeService.resolveRequest(pending!.requestId, { ok: true });
+      await expect(requestPromise).resolves.toEqual({ ok: true });
+
+      const statsDone = bridgeService.getStats();
+      expect(statsDone.totalResolved).toBe(1);
+      expect(statsDone.totalRejected).toBe(0);
+      expect(statsDone.inFlightRequests).toBe(0);
+    });
+  });
+
   describe('Request Priority', () => {
     test('should return oldest request first', async () => {
       // Create requests with different timestamps using fake timers

@@ -1,0 +1,22 @@
+{
+  "scripts": {
+    "C:\\Users\\aaron\\OneDrive\\Desktop\\rblxMCP\\blueprint-v1\\src\\ReplicatedStorage\\Shared\\Config.luau": {
+      "instancePath": "game.ReplicatedStorage.Shared.Config",
+      "lastLocalHash": "96b5c90ac2083fd93fe0bac9f6ce656cfbc51536711f68dfb0abca8dee77a002",
+      "lastStudioHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "updatedAt": "2026-02-11T07:29:20.798Z"
+    },
+    "C:\\Users\\aaron\\OneDrive\\Desktop\\rblxMCP\\blueprint-v1\\src\\ServerScriptService\\Bootstrap.server.luau": {
+      "instancePath": "game.ServerScriptService.Bootstrap",
+      "lastLocalHash": "c03e0335db4137e08926a2f23e468a9066cd0d5b0162d28bb25eae4902c32729",
+      "lastStudioHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "updatedAt": "2026-02-11T07:26:59.206Z"
+    },
+    "C:\\Users\\aaron\\OneDrive\\Desktop\\rblxMCP\\blueprint-v1\\src\\StarterPlayer\\StarterPlayerScripts\\ClientBootstrap.client.luau": {
+      "instancePath": "game.StarterPlayer.StarterPlayerScripts.ClientBootstrap",
+      "lastLocalHash": "00299616111a7d9d49721076cc3384743fda3d9bb0dcb7e17d8fc821567af07d",
+      "lastStudioHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "updatedAt": "2026-02-11T07:26:59.289Z"
+    }
+  }
+}

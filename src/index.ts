@@ -37,7 +37,7 @@ class RobloxStudioMCPServer {
     this.server = new Server(
       {
         name: 'robloxstudio-mcp',
-        version: '1.9.0',
+        version: '1.10.0',
       },
       {
         capabilities: {
@@ -97,6 +97,60 @@ class RobloxStudioMCPServer {
             inputSchema: {
               type: 'object',
               properties: {}
+            }
+          },
+          {
+            name: 'get_runtime_state',
+            description: 'Get MCP runtime state including write queue and bridge telemetry.',
+            inputSchema: {
+              type: 'object',
+              properties: {}
+            }
+          },
+          {
+            name: 'get_diagnostics',
+            description: 'Get diagnostics including write queue, fast path support, snapshots, and server/plugin readiness.',
+            inputSchema: {
+              type: 'object',
+              properties: {}
+            }
+          },
+          {
+            name: 'check_script_drift',
+            description: 'Compare local files against Studio script source hashes to detect drift.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                mappings: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      instancePath: { type: 'string' },
+                      localFile: { type: 'string' }
+                    },
+                    required: ['instancePath', 'localFile']
+                  }
+                },
+                normalizeLineEndings: {
+                  type: 'boolean',
+                  default: true
+                }
+              },
+              required: ['mappings']
+            }
+          },
+          {
+            name: 'lint_deprecated_apis',
+            description: 'Scan local source files for known deprecated Roblox API usage (for example GetCollisionGroups).',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                rootPath: {
+                  type: 'string',
+                  description: 'Root path to scan. Defaults to current working directory.'
+                }
+              }
             }
           },
           {
@@ -626,6 +680,28 @@ class RobloxStudioMCPServer {
             }
           },
           {
+            name: 'get_script_snapshot',
+            description: 'Get script source plus a deterministic SHA-256 sourceHash for optimistic concurrency control. Use this before batch edits or checked writes.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                instancePath: {
+                  type: 'string',
+                  description: 'Roblox instance path to the script (e.g., "game.ServerScriptService.MainScript")'
+                },
+                startLine: {
+                  type: 'number',
+                  description: 'Optional: Start line number (1-indexed).'
+                },
+                endLine: {
+                  type: 'number',
+                  description: 'Optional: End line number (inclusive).'
+                }
+              },
+              required: ['instancePath']
+            }
+          },
+          {
             name: 'set_script_source',
             description: 'Replace the entire source code of a Roblox script. Uses ScriptEditorService:UpdateSourceAsync (works with open editors). For partial edits, prefer edit_script_lines, insert_script_lines, or delete_script_lines.',
             inputSchema: {
@@ -638,6 +714,161 @@ class RobloxStudioMCPServer {
                 source: {
                   type: 'string',
                   description: 'New source code for the script'
+                },
+                expectedHash: {
+                  type: 'string',
+                  description: 'Optional optimistic lock hash from get_script_snapshot. Write will fail if source changed.'
+                }
+              },
+              required: ['instancePath', 'source']
+            }
+          },
+          {
+            name: 'set_script_source_checked',
+            description: 'Replace script source only if expectedHash matches current script hash. Prevents stale overwrites.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                instancePath: {
+                  type: 'string',
+                  description: 'Roblox instance path to the script'
+                },
+                source: {
+                  type: 'string',
+                  description: 'New source code for the script'
+                },
+                expectedHash: {
+                  type: 'string',
+                  description: 'Required source hash from get_script_snapshot'
+                }
+              },
+              required: ['instancePath', 'source', 'expectedHash']
+            }
+          },
+          {
+            name: 'set_script_source_fast',
+            description: 'Fast full-source write using direct assignment. Preferred for very large scripts where editor-safe updates can hang.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                instancePath: {
+                  type: 'string',
+                  description: 'Roblox instance path to the script'
+                },
+                source: {
+                  type: 'string',
+                  description: 'New source code for the script'
+                },
+                verify: {
+                  type: 'boolean',
+                  description: 'Verify source after write (recommended true)',
+                  default: true
+                }
+              },
+              required: ['instancePath', 'source']
+            }
+          },
+          {
+            name: 'set_script_source_fast_gzip',
+            description: 'Fast full-source write using gzip+base64 transport to reduce large payload transfer overhead.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                instancePath: {
+                  type: 'string',
+                  description: 'Roblox instance path to the script'
+                },
+                sourceGzipBase64: {
+                  type: 'string',
+                  description: 'Gzip-compressed source as base64 string'
+                },
+                verify: {
+                  type: 'boolean',
+                  description: 'Verify source after write',
+                  default: true
+                }
+              },
+              required: ['instancePath', 'sourceGzipBase64']
+            }
+          },
+          {
+            name: 'create_script_snapshot',
+            description: 'Create an in-memory rollback snapshot for a script from current Studio source.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                instancePath: {
+                  type: 'string',
+                  description: 'Roblox script path'
+                },
+                label: {
+                  type: 'string',
+                  description: 'Optional snapshot label'
+                }
+              },
+              required: ['instancePath']
+            }
+          },
+          {
+            name: 'list_script_snapshots',
+            description: 'List in-memory rollback snapshots created in this MCP session.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                instancePath: {
+                  type: 'string',
+                  description: 'Optional script path filter'
+                }
+              }
+            }
+          },
+          {
+            name: 'rollback_script_snapshot',
+            description: 'Restore script source from an in-memory snapshot id.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                snapshotId: {
+                  type: 'string',
+                  description: 'Snapshot id returned by create_script_snapshot'
+                },
+                verify: {
+                  type: 'boolean',
+                  default: true
+                }
+              },
+              required: ['snapshotId']
+            }
+          },
+          {
+            name: 'apply_and_verify_script_source',
+            description: 'Atomically apply full script source, verify hash/content, and rollback to prewrite snapshot if verification fails.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                instancePath: {
+                  type: 'string',
+                  description: 'Roblox script path'
+                },
+                source: {
+                  type: 'string',
+                  description: 'New full source'
+                },
+                expectedHash: {
+                  type: 'string',
+                  description: 'Optional current hash guard'
+                },
+                verifyNeedle: {
+                  type: 'string',
+                  description: 'Optional required text that must exist after write'
+                },
+                rollbackOnFailure: {
+                  type: 'boolean',
+                  default: true
+                },
+                preferFast: {
+                  type: 'boolean',
+                  description: 'Prefer direct fast write path'
                 }
               },
               required: ['instancePath', 'source']
@@ -713,6 +944,60 @@ class RobloxStudioMCPServer {
                 }
               },
               required: ['instancePath', 'startLine', 'endLine']
+            }
+          },
+          {
+            name: 'batch_script_edits',
+            description: 'Apply multiple line edits atomically with optional rollback and hash check. Operations are normalized internally to avoid line-shift conflicts.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                instancePath: {
+                  type: 'string',
+                  description: 'Roblox script path'
+                },
+                operations: {
+                  type: 'array',
+                  description: 'Array of edit operations',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      op: {
+                        type: 'string',
+                        enum: ['replace', 'insert', 'delete']
+                      },
+                      startLine: {
+                        type: 'number'
+                      },
+                      endLine: {
+                        type: 'number'
+                      },
+                      afterLine: {
+                        type: 'number'
+                      },
+                      newContent: {
+                        type: 'string'
+                      }
+                    },
+                    required: ['op']
+                  }
+                },
+                expectedHash: {
+                  type: 'string',
+                  description: 'Optional source hash from get_script_snapshot'
+                },
+                rollbackOnFailure: {
+                  type: 'boolean',
+                  description: 'If true, restore original source when any edit fails',
+                  default: true
+                },
+                fastMode: {
+                  type: 'boolean',
+                  description: 'If true, skip post-write hash verification for maximum speed',
+                  default: false
+                }
+              },
+              required: ['instancePath', 'operations']
             }
           },
           // Attribute Tools (for Roblox instance attributes)
@@ -863,6 +1148,19 @@ class RobloxStudioMCPServer {
               type: 'object',
               properties: {}
             }
+          },
+          {
+            name: 'cancel_pending_writes',
+            description: 'Cancel queued write operations that have not started yet.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                prefix: {
+                  type: 'string',
+                  description: 'Optional operation label prefix filter.'
+                }
+              }
+            }
           }
         ]
       };
@@ -882,6 +1180,17 @@ class RobloxStudioMCPServer {
           // Studio Context Tools
           case 'get_place_info':
             return await this.tools.getPlaceInfo();
+          case 'get_runtime_state':
+            return await this.tools.getRuntimeState();
+          case 'get_diagnostics':
+            return await this.tools.getDiagnostics();
+          case 'check_script_drift':
+            return await this.tools.checkScriptDrift(
+              (args as any)?.mappings as Array<{ instancePath: string; localFile: string }>,
+              (args as any)?.normalizeLineEndings as boolean | undefined
+            );
+          case 'lint_deprecated_apis':
+            return await this.tools.lintDeprecatedApis((args as any)?.rootPath as string | undefined);
           case 'get_services':
             return await this.tools.getServices((args as any)?.serviceName);
           case 'search_objects':
@@ -940,8 +1249,41 @@ class RobloxStudioMCPServer {
           // Script Management Tools
           case 'get_script_source':
             return await this.tools.getScriptSource((args as any)?.instancePath as string, (args as any)?.startLine, (args as any)?.endLine);
+          case 'get_script_snapshot':
+            return await this.tools.getScriptSnapshot((args as any)?.instancePath as string, (args as any)?.startLine, (args as any)?.endLine);
           case 'set_script_source':
-            return await this.tools.setScriptSource((args as any)?.instancePath as string, (args as any)?.source as string);
+            return await this.tools.setScriptSource((args as any)?.instancePath as string, (args as any)?.source as string, (args as any)?.expectedHash as string | undefined);
+          case 'set_script_source_checked':
+            return await this.tools.setScriptSourceChecked((args as any)?.instancePath as string, (args as any)?.source as string, (args as any)?.expectedHash as string);
+          case 'set_script_source_fast':
+            return await this.tools.setScriptSourceFast((args as any)?.instancePath as string, (args as any)?.source as string, (args as any)?.verify as boolean | undefined);
+          case 'set_script_source_fast_gzip':
+            return await this.tools.setScriptSourceFastGzip(
+              (args as any)?.instancePath as string,
+              (args as any)?.sourceGzipBase64 as string,
+              (args as any)?.verify as boolean | undefined
+            );
+          case 'create_script_snapshot':
+            return await this.tools.createScriptSnapshot(
+              (args as any)?.instancePath as string,
+              (args as any)?.label as string | undefined
+            );
+          case 'list_script_snapshots':
+            return await this.tools.listScriptSnapshots((args as any)?.instancePath as string | undefined);
+          case 'rollback_script_snapshot':
+            return await this.tools.rollbackScriptSnapshot(
+              (args as any)?.snapshotId as string,
+              (args as any)?.verify as boolean | undefined
+            );
+          case 'apply_and_verify_script_source':
+            return await this.tools.applyAndVerifyScriptSource(
+              (args as any)?.instancePath as string,
+              (args as any)?.source as string,
+              (args as any)?.expectedHash as string | undefined,
+              (args as any)?.verifyNeedle as string | undefined,
+              (args as any)?.rollbackOnFailure as boolean | undefined,
+              (args as any)?.preferFast as boolean | undefined
+            );
 
           // Partial Script Editing Tools
           case 'edit_script_lines':
@@ -950,6 +1292,14 @@ class RobloxStudioMCPServer {
             return await this.tools.insertScriptLines((args as any)?.instancePath as string, (args as any)?.afterLine as number, (args as any)?.newContent as string);
           case 'delete_script_lines':
             return await this.tools.deleteScriptLines((args as any)?.instancePath as string, (args as any)?.startLine as number, (args as any)?.endLine as number);
+          case 'batch_script_edits':
+            return await this.tools.batchScriptEdits(
+              (args as any)?.instancePath as string,
+              (args as any)?.operations as any[],
+              (args as any)?.expectedHash as string | undefined,
+              (args as any)?.rollbackOnFailure as boolean | undefined,
+              (args as any)?.fastMode as boolean | undefined
+            );
 
           // Attribute Tools
           case 'get_attribute':
@@ -974,6 +1324,15 @@ class RobloxStudioMCPServer {
           // Selection Tools
           case 'get_selection':
             return await this.tools.getSelection();
+          case 'cancel_pending_writes':
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(this.tools.cancelPendingWrites((args as any)?.prefix as string | undefined), null, 2)
+                }
+              ]
+            };
 
           default:
             throw new McpError(

@@ -10,6 +10,9 @@ export class StudioHttpClient {
   async request(endpoint: string, data: any): Promise<any> {
     try {
       const response = await this.bridge.sendRequest(endpoint, data);
+      if (response && typeof response === 'object' && typeof response.error === 'string') {
+        throw new Error(`Studio endpoint ${endpoint} failed: ${response.error}`);
+      }
       return response;
     } catch (error) {
       if (error instanceof Error && error.message === 'Request timeout') {

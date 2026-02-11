@@ -1,0 +1,17 @@
+{
+  "instances": [
+    {
+      "path": "game.Workspace.Baseplate",
+      "properties": {
+        "Anchored": true,
+        "Material": "Concrete"
+      },
+      "attributes": {
+        "ZoneType": "Spawn"
+      },
+      "tags": [
+        "BuildSurface"
+      ]
+    }
+  ]
+}

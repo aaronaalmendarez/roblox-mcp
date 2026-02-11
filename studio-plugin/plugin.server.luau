@@ -6,7 +6,15 @@ local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local ScriptEditorService = game:GetService("ScriptEditorService")
 local CollectionService = game:GetService("CollectionService")
 
-local CURRENT_VERSION = "1.9.0"
+local CURRENT_VERSION = "1.10.0"
+local PLUGIN_INSTANCE_ID = HttpService:GenerateGUID(false)
+local PLUGIN_CAPABILITIES = {
+	setScriptSourceFast = true,
+	batchScriptEdits = true,
+	fullSourceReads = true,
+	adaptivePolling = true,
+}
+local PLUGIN_CAPABILITIES_JSON = HttpService:JSONEncode(PLUGIN_CAPABILITIES)
 
 local toolbar = plugin:CreateToolbar("MCP Integration")
 local button =
@@ -16,7 +24,9 @@ local pluginState = {
 	serverUrl = "http://localhost:3002",
 	mcpServerUrl = "http://localhost:3001",
 	isActive = false,
-	pollInterval = 0.5,
+	pollInterval = 0.12,
+	idlePollInterval = 0.25,
+	hotPollInterval = 0.08,
 	lastPoll = 0,
 	consecutiveFailures = 0,
 	maxFailuresBeforeError = 50,
@@ -28,6 +38,8 @@ local pluginState = {
 	lastHttpOk = false,
 	mcpWaitStartTime = nil,
 	isPolling = false, -- Prevent concurrent poll requests
+	lastMcpConnected = false,
+	hotPollUntil = 0,
 }
 
 local screenGui = plugin:CreateDockWidgetPluginGuiAsync(
@@ -506,6 +518,18 @@ local function joinLines(lines, hadTrailingNewline)
 	return source
 end
 
+local function normalizeEscapedText(value)
+	if type(value) ~= "string" then
+		return value
+	end
+	local out = value
+	out = out:gsub("\\n", "\n")
+	out = out:gsub("\\t", "\t")
+	out = out:gsub("\\r", "\r")
+	out = out:gsub("\\\\", "\\")
+	return out
+end
+
 -- Helper to convert property values from JSON to Roblox types
 local function convertPropertyValue(instance, propertyName, propertyValue)
 	-- Handle nil
@@ -617,10 +641,17 @@ local function pollForRequests()
 	end
 	
 	pluginState.isPolling = true
+	local pollUrl = pluginState.serverUrl
+		.. "/poll?v="
+		.. HttpService:UrlEncode(CURRENT_VERSION)
+		.. "&caps="
+		.. HttpService:UrlEncode(PLUGIN_CAPABILITIES_JSON)
+		.. "&sid="
+		.. HttpService:UrlEncode(PLUGIN_INSTANCE_ID)
 
 	local success, result = pcall(function()
 		return HttpService:RequestAsync({
-			Url = pluginState.serverUrl .. "/poll",
+			Url = pollUrl,
 			Method = "GET",
 			Headers = {
 				["Content-Type"] = "application/json",
@@ -637,6 +668,7 @@ local function pollForRequests()
 
 		local data = HttpService:JSONDecode(result.Body)
 		local mcpConnected = data.mcpConnected == true
+		pluginState.lastMcpConnected = mcpConnected
 		-- Step indicators: HTTP request succeeded
 		pluginState.lastHttpOk = true
 		step1Dot.BackgroundColor3 = Color3.fromRGB(34, 197, 94)
@@ -681,6 +713,7 @@ local function pollForRequests()
 		end
 
 		if data.request and mcpConnected then
+			pluginState.hotPollUntil = tick() + 1.5
 			-- Process request in a separate thread to not block polling loop
 			task.spawn(function()
 				local response = processRequest(data.request)
@@ -819,6 +852,8 @@ processRequest = function(request)
 		return handlers.getScriptSource(data)
 	elseif endpoint == "/api/set-script-source" then
 		return handlers.setScriptSource(data)
+	elseif endpoint == "/api/set-script-source-fast" then
+		return handlers.setScriptSourceFast(data)
 	-- Partial script editing endpoints
 	elseif endpoint == "/api/edit-script-lines" then
 		return handlers.editScriptLines(data)
@@ -826,6 +861,8 @@ processRequest = function(request)
 		return handlers.insertScriptLines(data)
 	elseif endpoint == "/api/delete-script-lines" then
 		return handlers.deleteScriptLines(data)
+	elseif endpoint == "/api/batch-script-edits" then
+		return handlers.batchScriptEdits(data)
 	-- Attribute endpoints
 	elseif endpoint == "/api/get-attribute" then
 		return handlers.getAttribute(data)
@@ -2436,6 +2473,7 @@ handlers.getScriptSource = function(requestData)
 	local instancePath = requestData.instancePath
 	local startLine = requestData.startLine
 	local endLine = requestData.endLine
+	local returnFullSource = requestData.fullSource == true
 
 	if not instancePath then
 		return { error = "Instance path is required" }
@@ -2504,7 +2542,7 @@ handlers.getScriptSource = function(requestData)
 
 		-- If the source is very large (>50000 chars) and no range specified,
 		-- return first 1000 lines with truncation notice
-		if not startLine and not endLine and string.len(fullSource) > 50000 then
+		if (not returnFullSource) and (not startLine) and (not endLine) and string.len(fullSource) > 50000 then
 			local truncatedLines = {}
 			local truncatedNumberedLines = {}
 			local maxLines = math.min(1000, #lines)
@@ -2535,6 +2573,7 @@ end
 handlers.setScriptSource = function(requestData)
 	local instancePath = requestData.instancePath
 	local newSource = requestData.source
+	local preferDirect = requestData.preferDirect == true
 
 	if not instancePath or not newSource then
 		return { error = "Instance path and source are required" }
@@ -2556,6 +2595,30 @@ handlers.setScriptSource = function(requestData)
 	sourceToSet = sourceToSet:gsub("\\t", "\t")
 	sourceToSet = sourceToSet:gsub("\\r", "\r")
 	sourceToSet = sourceToSet:gsub("\\\\", "\\")
+	-- For large writes, direct assignment is significantly more reliable than UpdateSourceAsync.
+	local forceDirectBySize = string.len(sourceToSet) > 100000
+	if preferDirect or forceDirectBySize then
+		local directSuccess, directResult = pcall(function()
+			local oldSource = instance.Source
+			instance.Source = sourceToSet
+
+			ChangeHistoryService:SetWaypoint("Set script source: " .. instance.Name)
+
+			return {
+				success = true,
+				instancePath = instancePath,
+				oldSourceLength = string.len(oldSource),
+				newSourceLength = string.len(sourceToSet),
+				method = preferDirect and "direct-preferred" or "direct-large-source",
+				message = "Script source updated successfully (direct assignment)"
+			}
+		end)
+
+		if directSuccess then
+			return directResult
+		end
+	end
+
 	local updateSuccess, updateResult = pcall(function()
 		local oldSourceLength = string.len(instance.Source)
 
@@ -2871,6 +2934,249 @@ handlers.deleteScriptLines = function(requestData)
 		return result
 	else
 		return { error = "Failed to delete script lines: " .. tostring(result) }
+	end
+end
+
+-- Fast full-source writer optimized for large payloads.
+-- Bypasses UpdateSourceAsync to avoid editor hangs on big writes.
+handlers.setScriptSourceFast = function(requestData)
+	local instancePath = requestData.instancePath
+	local newSource = requestData.source
+	local verify = requestData.verify == true
+
+	if not instancePath or not newSource then
+		return { error = "Instance path and source are required" }
+	end
+
+	local instance = getInstanceByPath(instancePath)
+	if not instance then
+		return { error = "Instance not found: " .. instancePath }
+	end
+
+	if not instance:IsA("LuaSourceContainer") then
+		return { error = "Instance is not a script-like object: " .. instance.ClassName }
+	end
+
+	local sourceToSet = newSource :: string
+	sourceToSet = sourceToSet:gsub("\\n", "\n")
+	sourceToSet = sourceToSet:gsub("\\t", "\t")
+	sourceToSet = sourceToSet:gsub("\\r", "\r")
+	sourceToSet = sourceToSet:gsub("\\\\", "\\")
+
+	local success, result = pcall(function()
+		local oldSource = instance.Source
+		instance.Source = sourceToSet
+
+		if verify and instance.Source ~= sourceToSet then
+			error("Source verification failed after direct write")
+		end
+
+		ChangeHistoryService:SetWaypoint("Set script source fast: " .. instance.Name)
+
+		return {
+			success = true,
+			instancePath = instancePath,
+			oldSourceLength = string.len(oldSource),
+			newSourceLength = string.len(sourceToSet),
+			method = "fast-direct",
+			verified = verify,
+			message = "Script source updated successfully (fast direct write)"
+		}
+	end)
+
+	if success then
+		return result
+	end
+
+	return { error = "Failed to set script source fast: " .. tostring(result) }
+end
+
+-- High-performance Script Editing: apply multiple edits in-memory and commit once
+handlers.batchScriptEdits = function(requestData)
+	local instancePath = requestData.instancePath
+	local operations = requestData.operations
+
+	if not instancePath then
+		return { error = "Instance path is required" }
+	end
+	if type(operations) ~= "table" or #operations == 0 then
+		return { error = "Operations array is required" }
+	end
+
+	local instance = getInstanceByPath(instancePath)
+	if not instance then
+		return { error = "Instance not found: " .. instancePath }
+	end
+	if not instance:IsA("LuaSourceContainer") then
+		return { error = "Instance is not a script-like object: " .. instance.ClassName }
+	end
+
+	local success, result = pcall(function()
+		local originalSource = instance.Source
+		local lines, hadTrailingNewline = splitLines(originalSource)
+		local totalLines = #lines
+
+		local normalizedOps = {}
+		for _, op in ipairs(operations) do
+			if type(op) ~= "table" then
+				error("Each operation must be an object")
+			end
+			local opType = op.op
+			if opType ~= "replace" and opType ~= "insert" and opType ~= "delete" then
+				error("Unsupported operation type: " .. tostring(opType))
+			end
+
+			local anchor = 0
+			if opType == "insert" then
+				anchor = (tonumber(op.afterLine) or 0) + 1
+			else
+				anchor = tonumber(op.startLine) or 0
+			end
+
+			table.insert(normalizedOps, {
+				op = opType,
+				startLine = tonumber(op.startLine),
+				endLine = tonumber(op.endLine),
+				afterLine = tonumber(op.afterLine),
+				newContent = op.newContent,
+				anchor = anchor,
+			})
+		end
+
+		table.sort(normalizedOps, function(a, b)
+			if a.anchor == b.anchor then
+				-- deterministic ordering for same anchor
+				return tostring(a.op) > tostring(b.op)
+			end
+			return a.anchor > b.anchor
+		end)
+
+		local appliedCount = 0
+
+		for _, op in ipairs(normalizedOps) do
+			local opType = op.op
+			if opType == "replace" then
+				local startLine = op.startLine
+				local endLine = op.endLine
+				if not startLine or not endLine then
+					error("replace requires startLine and endLine")
+				end
+				if startLine < 1 or startLine > totalLines then
+					error("replace startLine out of range (1-" .. totalLines .. ")")
+				end
+				if endLine < startLine or endLine > totalLines then
+					error("replace endLine out of range (" .. startLine .. "-" .. totalLines .. ")")
+				end
+
+				local newContent = normalizeEscapedText(op.newContent or "")
+				local newLines = select(1, splitLines(newContent))
+				local resultLines = {}
+
+				for i = 1, startLine - 1 do
+					table.insert(resultLines, lines[i])
+				end
+				for _, line in ipairs(newLines) do
+					table.insert(resultLines, line)
+				end
+				for i = endLine + 1, totalLines do
+					table.insert(resultLines, lines[i])
+				end
+
+				lines = resultLines
+				totalLines = #lines
+				appliedCount += 1
+			elseif opType == "insert" then
+				local afterLine = op.afterLine or 0
+				if afterLine < 0 or afterLine > totalLines then
+					error("insert afterLine out of range (0-" .. totalLines .. ")")
+				end
+
+				local newContent = normalizeEscapedText(op.newContent or "")
+				local newLines = select(1, splitLines(newContent))
+				local resultLines = {}
+
+				for i = 1, afterLine do
+					table.insert(resultLines, lines[i])
+				end
+				for _, line in ipairs(newLines) do
+					table.insert(resultLines, line)
+				end
+				for i = afterLine + 1, totalLines do
+					table.insert(resultLines, lines[i])
+				end
+
+				lines = resultLines
+				totalLines = #lines
+				appliedCount += 1
+			elseif opType == "delete" then
+				local startLine = op.startLine
+				local endLine = op.endLine
+				if not startLine or not endLine then
+					error("delete requires startLine and endLine")
+				end
+				if startLine < 1 or startLine > totalLines then
+					error("delete startLine out of range (1-" .. totalLines .. ")")
+				end
+				if endLine < startLine or endLine > totalLines then
+					error("delete endLine out of range (" .. startLine .. "-" .. totalLines .. ")")
+				end
+
+				local resultLines = {}
+				for i = 1, startLine - 1 do
+					table.insert(resultLines, lines[i])
+				end
+				for i = endLine + 1, totalLines do
+					table.insert(resultLines, lines[i])
+				end
+
+				lines = resultLines
+				totalLines = #lines
+				appliedCount += 1
+			end
+		end
+
+		local newSource = joinLines(lines, hadTrailingNewline)
+		local updateMethod = "UpdateSourceAsync"
+
+		local updateSuccess = pcall(function()
+			ScriptEditorService:UpdateSourceAsync(instance, function(oldContent)
+				return newSource
+			end)
+		end)
+
+		-- Some Studio states can no-op UpdateSourceAsync without throwing.
+		-- Verify and fall back to direct assignment so MCP behavior stays deterministic.
+		if not updateSuccess or instance.Source ~= newSource then
+			updateMethod = "direct"
+			local directSuccess, directErr = pcall(function()
+				instance.Source = newSource
+			end)
+			if not directSuccess then
+				error("Failed to commit batch script edits via direct assignment: " .. tostring(directErr))
+			end
+		end
+
+		if instance.Source ~= newSource then
+			error("Batch script edits did not persist to script source")
+		end
+
+		ChangeHistoryService:SetWaypoint("Batch script edits (" .. tostring(appliedCount) .. " ops): " .. instance.Name)
+
+		return {
+			success = true,
+			instancePath = instancePath,
+			operationsApplied = appliedCount,
+			sourceChanged = originalSource ~= newSource,
+			updateMethod = updateMethod,
+			newLineCount = totalLines,
+			message = "Batch script edits applied successfully"
+		}
+	end)
+
+	if success then
+		return result
+	else
+		return { error = "Failed to apply batch script edits: " .. tostring(result) }
 	end
 end
 
@@ -3308,6 +3614,8 @@ local function activatePlugin()
 	pluginState.isActive = true
 	pluginState.consecutiveFailures = 0
 	pluginState.currentRetryDelay = 0.5
+	pluginState.hotPollUntil = 0
+	pluginState.lastMcpConnected = false
 	screenGui.Enabled = true
 	updateUIState()
 
@@ -3321,6 +3629,9 @@ local function activatePlugin()
 			Body = HttpService:JSONEncode({
 				pluginReady = true,
 				timestamp = tick(),
+				version = CURRENT_VERSION,
+				pluginInstanceId = PLUGIN_INSTANCE_ID,
+				capabilities = PLUGIN_CAPABILITIES,
 			}),
 		})
 	end)
@@ -3328,8 +3639,16 @@ local function activatePlugin()
 	if not pluginState.connection then
 		pluginState.connection = RunService.Heartbeat:Connect(function()
 			local now = tick()
-			local currentInterval = pluginState.consecutiveFailures > 5 and pluginState.currentRetryDelay
-				or pluginState.pollInterval
+			local currentInterval
+			if pluginState.consecutiveFailures > 5 then
+				currentInterval = pluginState.currentRetryDelay
+			elseif now < pluginState.hotPollUntil then
+				currentInterval = pluginState.hotPollInterval
+			elseif pluginState.lastMcpConnected then
+				currentInterval = pluginState.pollInterval
+			else
+				currentInterval = pluginState.idlePollInterval
+			end
 			if now - pluginState.lastPoll > currentInterval then
 				pluginState.lastPoll = now
 				pollForRequests()
@@ -3362,6 +3681,8 @@ local function deactivatePlugin()
 	
 	pluginState.consecutiveFailures = 0
 	pluginState.currentRetryDelay = 0.5
+	pluginState.hotPollUntil = 0
+	pluginState.lastMcpConnected = false
 end
 
 connectButton.Activated:Connect(function()

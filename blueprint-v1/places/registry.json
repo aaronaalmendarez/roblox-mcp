@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "places": {
+    "111511907195777": {
+      "placeId": 111511907195777,
+      "gameId": 9707505962,
+      "slug": "untitled-experience",
+      "displayName": "Untitled Experience",
+      "detectedPlaceName": "Untitled Experience",
+      "tags": [],
+      "createdAt": "2026-02-11T10:00:55.912Z",
+      "lastSeenAt": "2026-02-11T10:04:07.929Z"
+    }
+  },
+  "createdAt": "2026-02-11T10:00:55.894Z",
+  "updatedAt": "2026-02-11T10:04:07.930Z"
+}
