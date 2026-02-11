@@ -35,6 +35,22 @@ An [MCP](https://modelcontextprotocol.io/) server that connects AI assistants di
 
 ---
 
+> ## 🤖 Using an AI Agent? (Claude Code, Cursor, etc.)
+>
+> **Let your AI agent set everything up for you!**
+>
+> Just copy the **[AGENT.md](./AGENT.md)** file and give it to your AI agent with this prompt:
+>
+> ```
+> Read this AGENT.md file and set up the Roblox Studio MCP on my machine. Follow all the installation steps.
+> ```
+>
+> Your agent will handle cloning, building, configuring MCP, and setting up Blueprint V1 automatically.
+>
+> **[📖 View AGENT.md](./AGENT.md)**
+
+---
+
 ## 🚀 Quick Start
 
 **1 →** Install the Studio plugin ([download `.rbxmx`](https://github.com/boshyxd/robloxstudio-mcp/releases/latest/download/MCPPlugin.rbxmx)) into your plugins folder
