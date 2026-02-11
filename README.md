@@ -300,6 +300,288 @@ npm run luau:lint                # Static analysis
 
 ---
 
+## 📋 Blueprint Operator Playbook
+
+Everything below is the **strict operational guide** for working with Blueprint V1. Follow these steps exactly.
+
+### 1. Canonical Windows Flow (copy-paste)
+
+Open a terminal in the repo root and run each step in order:
+
+```powershell
+# Step 1 — Detect the place open in Studio and register it
+npm run place:detect
+
+# Step 2 — Confirm resolved paths
+npm run place:status
+
+# Step 3 — Start Rojo against the resolved project
+rojo serve blueprint-v1/places/<slug>/default.project.json
+
+# Step 4 — Start continuous property sync (separate terminal)
+npm run blueprint:watch
+
+# Step 5 — Start reverse sync guard (separate terminal)
+npm run blueprint:reverse-sync
+```
+
+Or use the **one-command launcher** that does steps 1-5 automatically:
+
+```powershell
+npm run dev:studio -- --place <slug>
+```
+
+> This spawns the MCP server, Rojo, property watcher, and reverse-sync in parallel. Press `Ctrl+C` to stop all.
+
+---
+
+### 2. Required Tooling Install Matrix
+
+| Tool             | Required                | Install (Windows)                                                                                             |
+| :--------------- | :---------------------- | :------------------------------------------------------------------------------------------------------------ |
+| **Node.js** ≥ 18 | ✅ Yes                   | `winget install OpenJS.NodeJS.LTS` or [nodejs.org](https://nodejs.org)                                        |
+| **Rojo**         | ✅ Yes (for script sync) | `cargo install rojo` — or [download binary](https://github.com/rojo-rbx/rojo/releases) and add to `PATH`      |
+| **Luau CLI**     | Optional (for lint)     | `npm run luau:install` (auto-downloads from [luau-lang releases](https://github.com/luau-lang/luau/releases)) |
+
+<details>
+<summary><b>No winget or cargo?</b></summary>
+
+- **Node.js:** Download the `.msi` installer from [nodejs.org/en/download](https://nodejs.org/en/download)
+- **Rojo:** Download `rojo.exe` from [GitHub releases](https://github.com/rojo-rbx/rojo/releases), place in a folder on your `PATH`
+- **Luau:** `npm run luau:install` handles this — it downloads the correct binary for your OS into `.tools/`
+</details>
+
+---
+
+### 3. Expected Success Output Per Step
+
+**`npm run place:detect`**
+```
+✔ Detected place: Place2 (136131439760483)
+✔ Registered slug: place2
+✔ Set as active place
+```
+
+**`npm run place:status`**
+```
+Mode:       place
+Place:      Place2 (136131439760483)
+Slug:       place2
+Project:    blueprint-v1/places/place2/default.project.json
+Source:     blueprint-v1/places/place2/src
+Properties: blueprint-v1/places/place2/properties/instances.json
+```
+
+**`rojo serve ...`**
+```
+Rojo server listening on port 34872
+```
+
+**`http://localhost:3002/health`**
+```json
+{
+  "pluginConnected": true,
+  "mcpServerActive": true,
+  "plugin": { "version": "1.10.0" }
+}
+```
+
+**`npm run blueprint:reverse-sync`**
+```
+Reverse sync active. Tracked scripts: 3
+Polling every 2000ms...
+```
+
+> If any output differs from the above, stop and consult the [Troubleshooting](#-troubleshooting) table.
+
+---
+
+### 4. Source of Truth Rules
+
+| Situation                                       | Who Wins               | Action                                                    |
+| :---------------------------------------------- | :--------------------- | :-------------------------------------------------------- |
+| You edited a `.luau` file locally               | **Local wins**         | Rojo pushes to Studio automatically                       |
+| You edited a script inside Studio               | **Studio wins**        | Run `npm run blueprint:reverse-sync` to pull changes back |
+| Both sides changed the same script              | **Neither** — conflict | A `.conflict` file is written; you manually merge         |
+| Non-script property changed in Studio           | **Studio wins**        | Run `npm run blueprint:sync` to capture it                |
+| Non-script property changed in `instances.json` | **Local wins**         | Run `npm run blueprint:sync` to push to Studio            |
+| You aren't sure what changed                    | **Check first**        | Run `npm run drift:check` to compare hashes               |
+
+**Golden rule:** Edit scripts in your IDE (Rojo syncs them). Edit non-script properties via `instances.json`. Only reverse-sync when you intentionally made Studio-side script changes.
+
+---
+
+### 5. File Naming & Path Mapping
+
+Rojo uses file suffixes to determine the script type and instance name:
+
+| File Suffix         | Script Type                    | Instance Name           |
+| :------------------ | :----------------------------- | :---------------------- |
+| `.server.luau`      | `Script` (runs on server)      | Filename without suffix |
+| `.client.luau`      | `LocalScript` (runs on client) | Filename without suffix |
+| `.module.luau`      | `ModuleScript` (shared)        | Filename without suffix |
+| `.luau` (no suffix) | `ModuleScript`                 | Full filename           |
+
+**Path resolution example:**
+
+```
+File:     blueprint-v1/places/place2/src/ServerScriptService/HorrorMain.server.luau
+Instance: game.ServerScriptService.HorrorMain       (Script)
+
+File:     blueprint-v1/places/place2/src/StarterPlayer/StarterPlayerScripts/HorrorClient.client.luau
+Instance: game.StarterPlayer.StarterPlayerScripts.HorrorClient   (LocalScript)
+
+File:     blueprint-v1/places/place2/src/ReplicatedStorage/HorrorConfig.module.luau
+Instance: game.ReplicatedStorage.HorrorConfig        (ModuleScript)
+```
+
+> The directory path under `src/` maps directly to the Roblox service hierarchy. The `default.project.json` defines which directories map to which services.
+
+---
+
+### 6. Conflict Handling
+
+When reverse-sync detects **both local and Studio changed** the same script, it writes a conflict file instead of overwriting:
+
+```
+blueprint-v1/places/<slug>/.reverse-sync-conflicts/
+└── ServerScriptService/
+    └── HorrorMain.server.luau.conflict
+```
+
+**Recovery workflow:**
+
+1. Open the `.conflict` file — this is the Studio version
+2. Open the original `.luau` file — this is your local version
+3. Manually merge the changes you want to keep
+4. Delete the `.conflict` file
+5. Run `npm run blueprint:reverse-sync` again — it will re-baseline
+
+**State tracking:** Each tracked script's hashes are stored in:
+```
+blueprint-v1/places/<slug>/.reverse-sync-state.json
+```
+
+This file contains `lastLocalHash` and `lastStudioHash` per script. If you need to force a full re-sync, delete this file and restart reverse-sync.
+
+---
+
+### 7. Common Failures & Fixes
+
+| Failure                            | Cause                                       | Fix                                                   |
+| :--------------------------------- | :------------------------------------------ | :---------------------------------------------------- |
+| Place resolves wrong slug          | `.active-place.json` points to old place    | `npm run place:detect` (re-detects from Studio)       |
+| `rojo: command not found`          | Rojo not installed or not on PATH           | Install via `cargo install rojo` or download binary   |
+| Module path mismatch               | File in wrong `src/` subdirectory           | Match directory to Roblox service name exactly        |
+| HTTP 403 from plugin               | HTTP requests disabled in Studio            | Game Settings → Security → Allow HTTP Requests        |
+| Stale `.active-place.json`         | Switched Studio places without re-detecting | `npm run place:detect`                                |
+| `ECONNREFUSED :3002`               | MCP server not running                      | `node dist/index.js` or `npm run dev:studio`          |
+| Reverse-sync shows 0 tracked       | No scripts match Rojo mappings              | Verify files exist in resolved `src/` path            |
+| Rojo sync not updating Studio      | Rojo serving wrong project file             | Check `npm run place:status` for correct project path |
+| Lint says "luau-analyze not found" | Luau CLI not installed                      | `npm run luau:install`                                |
+| `blueprint:doctor` fails           | Server or plugin not connected              | Start server, open Studio, enable plugin              |
+
+---
+
+### 8. One-Command Dev Launcher
+
+The `dev:studio` script is the recommended daily driver:
+
+```powershell
+npm run dev:studio -- --place place2
+```
+
+This starts **all four services** in parallel:
+
+| Service              | What It Does                                                 |
+| :------------------- | :----------------------------------------------------------- |
+| **MCP server**       | `node dist/index.js`                                         |
+| **Rojo**             | `rojo serve blueprint-v1/places/place2/default.project.json` |
+| **Property watcher** | Continuous `blueprint:watch` for non-script sync             |
+| **Reverse sync**     | Guarded Studio → local pull                                  |
+
+Output on success:
+```
+Starting studio dev orchestrator...
+Context: Place2 (136131439760483) [place2]
+Orchestrator active. Press Ctrl+C to stop all processes.
+```
+
+> **Flags:** `--with-rojo`, `--with-watch`, `--with-reverse` are all enabled by the default `dev:studio` npm script. Use `node scripts/dev-studio.mjs --place place2 --with-rojo` to select individually.
+
+---
+
+### 9. Blueprint Scope Boundaries
+
+Blueprint separates concerns cleanly between two systems:
+
+| What                                                    | Managed By                            | Files                                                    |
+| :------------------------------------------------------ | :------------------------------------ | :------------------------------------------------------- |
+| **Scripts** (Luau code)                                 | **Rojo**                              | `.server.luau`, `.client.luau`, `.module.luau` in `src/` |
+| **Non-script properties** (Position, Size, Color, etc.) | **Sync scripts**                      | `properties/instances.json`                              |
+| **Attributes**                                          | **Sync scripts**                      | `properties/instances.json` (attributes field)           |
+| **Tags**                                                | **Sync scripts**                      | `properties/instances.json` (tags field)                 |
+| **Instance creation / hierarchy**                       | **Rojo** (via `default.project.json`) | `default.project.json` tree                              |
+
+**Do NOT:**
+- Edit `.luau` files through `instances.json` — Rojo handles scripts
+- Create new services by adding directories without updating `default.project.json`
+- Mix legacy `blueprint-v1/src/` with place-specific `blueprint-v1/places/<slug>/src/`
+
+---
+
+### 10. Example: Horror Game (`place2`)
+
+A complete real-world place from this repository:
+
+```
+blueprint-v1/places/place2/
+├── default.project.json              # Rojo project mapping 12 services
+├── .reverse-sync-state.json          # Tracks 3 scripts with SHA-256 hashes
+├── .reverse-sync-conflicts/          # Empty (no conflicts currently)
+├── src/
+│   ├── ServerScriptService/
+│   │   └── HorrorMain.server.luau    # → game.ServerScriptService.HorrorMain (Script)
+│   ├── ReplicatedStorage/
+│   │   └── HorrorConfig.module.luau  # → game.ReplicatedStorage.HorrorConfig (ModuleScript)
+│   └── StarterPlayer/
+│       └── StarterPlayerScripts/
+│           └── HorrorClient.client.luau  # → game.StarterPlayer.StarterPlayerScripts.HorrorClient (LocalScript)
+└── properties/
+    ├── instances.json                # Non-script property manifest (empty for now)
+    └── schema.json                   # Property schema definitions
+```
+
+**Registry entry** (`blueprint-v1/places/registry.json`):
+```json
+{
+  "136131439760483": {
+    "placeId": 136131439760483,
+    "gameId": 9708597637,
+    "slug": "place2",
+    "displayName": "Place2"
+  }
+}
+```
+
+**Full workflow for this place:**
+```powershell
+# One-time: detect and register
+npm run place:detect
+# → ✔ Detected place: Place2 (136131439760483), slug: place2
+
+# Daily: start everything
+npm run dev:studio -- --place place2
+# → MCP server, Rojo, property watcher, and reverse sync all running
+
+# Or manually:
+rojo serve blueprint-v1/places/place2/default.project.json
+npm run blueprint:watch
+npm run blueprint:reverse-sync
+```
+
+---
+
 ## 🛠️ Development
 
 ```bash
