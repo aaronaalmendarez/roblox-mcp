@@ -549,6 +549,56 @@ This starts:
 
 **Note:** This will fail if port 3002 or 34872 is already in use. Kill existing processes first.
 
+### ⚠️ CRITICAL: Always Edit Local Files, Never Edit Via MCP
+
+**NEVER use MCP tools to edit scripts directly in Studio.** Always:
+
+1. **Edit local `.luau` files** in `blueprint-v1/places/<slug>/src/`
+2. **Connect Rojo in Studio** (View → Rojo → Connect to `localhost:34872`)
+3. **Rojo auto-syncs** your changes
+
+#### Correct Workflow
+
+```bash
+# 1. Start Rojo (if not running)
+rojo serve blueprint-v1/places/<slug>/default.project.json
+
+# 2. In Studio: View → Rojo → Connect to localhost:34872
+
+# 3. Edit local file in IDE
+#    blueprint-v1/places/<slug>/src/ServerScriptService/Main.server.luau
+
+# 4. Run Luau lint to catch errors BEFORE Rojo syncs
+npm run luau:lint
+
+# 5. Fix any lint errors
+
+# 6. Rojo automatically syncs to Studio when you save
+```
+
+#### Why This Matters
+
+- **Source control**: Local files are tracked in git, Studio scripts are not
+- **Luau lint**: Catch errors BEFORE they reach Studio
+- **No MCP edits**: MCP should READ Studio, not WRITE to it
+- **Rojo handles sync**: Let Rojo do its job
+
+#### Manual Push (if Rojo isn't connected)
+
+```bash
+# Push a single file to Studio
+node scripts/push-script-fast.mjs \
+  --instance game.ServerScriptService.Main \
+  --file blueprint-v1/places/<slug>/src/ServerScriptService/Main.server.luau
+```
+
+#### Checklist
+
+- [ ] Local file edited
+- [ ] `npm run luau:lint` passes with `findings=0`
+- [ ] Rojo connected in Studio
+- [ ] File saved → Rojo syncs → Studio updates
+
 ---
 
 ## All MCP Tools Reference
