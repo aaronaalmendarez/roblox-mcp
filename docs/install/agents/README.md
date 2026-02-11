@@ -124,6 +124,10 @@ Example:
 node scripts/push-script-fast.mjs --instance game.ServerScriptService.Main --file blueprint-v1/places/<slug>/src/ServerScriptService/Main.server.luau
 ```
 
+Note:
+
+- Harness push scripts auto-strip UTF-8 BOM before writing to Studio to prevent Luau parse errors (`U+FEFF`).
+
 ## 9) Failure handling
 
 If startup handshake fails (`connection closed: initialize response`):
@@ -153,4 +157,3 @@ npm run place:status
 ```
 
 Only proceed to write operations after doctor + place status are healthy.
-

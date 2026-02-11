@@ -3,6 +3,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import { stripUtf8Bom } from './lib/text-utils.mjs';
 
 const BASE = (process.env.ROBLOX_MCP_URL || 'http://localhost:3002').replace(/\/$/, '');
 
@@ -65,7 +66,8 @@ async function call(endpoint, payload) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const source = await fs.readFile(path.resolve(process.cwd(), args.file), 'utf8');
+  const sourceRaw = await fs.readFile(path.resolve(process.cwd(), args.file), 'utf8');
+  const source = stripUtf8Bom(sourceRaw);
   const started = Date.now();
   const result = await call('apply_and_verify_script_source', {
     instancePath: args.instancePath,

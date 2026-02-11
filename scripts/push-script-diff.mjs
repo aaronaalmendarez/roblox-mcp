@@ -3,6 +3,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import { stripUtf8Bom } from './lib/text-utils.mjs';
 
 const BASE = (process.env.ROBLOX_MCP_URL || 'http://localhost:3002').replace(/\/$/, '');
 
@@ -109,7 +110,8 @@ function buildMinimalOp(remoteSource, localSource) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const abs = path.resolve(process.cwd(), args.file);
-  const localSource = await fs.readFile(abs, 'utf8');
+  const localSourceRaw = await fs.readFile(abs, 'utf8');
+  const localSource = stripUtf8Bom(localSourceRaw);
 
   const snapshot = await callMcp('get_script_snapshot', { instancePath: args.instancePath });
   const remoteSource = typeof snapshot.source === 'string' ? snapshot.source : '';
