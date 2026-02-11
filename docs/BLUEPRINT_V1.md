@@ -1,88 +1,132 @@
-# Blueprint V1 (IDE + Studio Sync)
+# Blueprint V1 — IDE + Studio Sync
 
-Blueprint v1 now supports multi-place projects with automatic context selection from live Studio place info.
+Blueprint V1 is the file-system layer that keeps your local Luau source in sync with Roblox Studio. It's built on [Rojo](https://rojo.space/) and supports **multi-place projects** with automatic context selection.
 
-## Layout
+---
 
-Preferred (multi-place):
+## How It Works
 
-- `blueprint-v1/places/registry.json`
-- `blueprint-v1/places/.active-place.json`
-- `blueprint-v1/places/<slug>/default.project.json`
-- `blueprint-v1/places/<slug>/src/...`
-- `blueprint-v1/places/<slug>/properties/instances.json`
-- `blueprint-v1/places/<slug>/properties/schema.json`
+```
+Local files (blueprint-v1/)  ◄──── Rojo ────►  Roblox Studio
+         │                                           │
+    property manifests                        live instance tree
+         │                                           │
+         └──── sync scripts (npm run ...) ───────────┘
+```
 
-Legacy fallback (still supported):
+- **Rojo** handles script syncing (`.luau` files ↔ Studio scripts)
+- **Sync scripts** handle non-script properties (Position, Size, Color, etc.)
+- **Reverse sync** pulls Studio-side changes back to local files with conflict detection
 
-- `blueprint-v1/default.project.json`
-- `blueprint-v1/src/...`
-- `blueprint-v1/properties/instances.json`
+---
 
-## Place commands
+## Directory Layout
 
-Detect current Studio place and register if missing:
+### Multi-Place (Preferred)
 
-`npm run place:detect`
+```
+blueprint-v1/
+├── places/
+│   ├── registry.json              # Place ID → slug mapping
+│   ├── .active-place.json         # Currently active place context
+│   └── <slug>/
+│       ├── default.project.json   # Rojo project file for this place
+│       ├── src/                   # Luau source tree
+│       │   ├── ServerScriptService/
+│       │   ├── ReplicatedStorage/
+│       │   └── StarterPlayer/
+│       └── properties/
+│           ├── instances.json     # Non-script property manifest
+│           └── schema.json        # Property schema definitions
+```
 
-List places and active mapping:
+### Legacy Single-Place (Still Supported)
 
-`npm run place:list`
+```
+blueprint-v1/
+├── default.project.json
+├── src/
+└── properties/
+    └── instances.json
+```
 
-Show resolved context (project/src/properties) used by sync scripts:
+> Scripts auto-detect which layout is active. Multi-place takes priority when `registry.json` exists.
 
-`npm run place:status`
+---
 
-Switch active place manually:
+## Place Management
 
-`node scripts/places.mjs use <placeId-or-slug>`
+| Command                                                   | What It Does                                              |
+| --------------------------------------------------------- | --------------------------------------------------------- |
+| `npm run place:detect`                                    | Auto-detect current Studio place ID and register it       |
+| `npm run place:list`                                      | List all registered places and their slugs                |
+| `npm run place:status`                                    | Show resolved project path, src path, and properties path |
+| `node scripts/places.mjs use <id-or-slug>`                | Switch active place manually                              |
+| `node scripts/places.mjs tag add <id-or-slug> tycoon,sim` | Tag a place for organization                              |
 
-Tag places:
+---
 
-`node scripts/places.mjs tag add <placeId-or-slug> tycoon,sim`
+## Sync Commands
 
-## Sync commands
+### Property Sync (Non-Script Data)
 
-Connectivity doctor:
+```bash
+npm run blueprint:sync        # One-shot: apply instances.json → Studio
+npm run blueprint:watch       # Continuous: watch for changes and sync
+```
 
-`npm run blueprint:doctor`
+### Reverse Sync (Studio → Local Files)
 
-Property apply (auto-resolves place):
+```bash
+npm run blueprint:reverse-sync    # Continuous guarded pull
+node scripts/reverse-sync-rojo.mjs --once   # Single cycle
+```
 
-`npm run blueprint:sync`
+### Connectivity Check
 
-Property watch (auto-resolves place):
+```bash
+npm run blueprint:doctor      # Verify server + plugin + Rojo connectivity
+```
 
-`npm run blueprint:watch`
+### Custom Overrides
 
-Reverse sync Studio -> file (auto-resolves place):
+All scripts accept explicit paths if you need to bypass auto-detection:
 
-`npm run blueprint:reverse-sync`
+```bash
+node scripts/sync-roblox-properties.mjs --file ./path/to/instances.json
+node scripts/watch-roblox-properties.mjs --file ./path/to/instances.json --debounce-ms 500
+node scripts/reverse-sync-rojo.mjs --project ./my.project.json --state-file ./state.json --conflict-dir ./conflicts
+```
 
-Custom overrides are still supported:
+---
 
-- `node scripts/sync-roblox-properties.mjs --file ./path/to/instances.json`
-- `node scripts/watch-roblox-properties.mjs --file ./path/to/instances.json --debounce-ms 500`
-- `node scripts/reverse-sync-rojo.mjs --project ./my.project.json --state-file ./state.json --conflict-dir ./conflicts`
+## Recommended Live Loop
 
-## Recommended live loop
+A typical development session:
 
-1. Start Studio, enable plugin, enable HTTP.
-2. Register/select place:
-`npm run place:detect`
-3. Run Rojo against place project from `npm run place:status`.
-4. Edit scripts in resolved `src/`.
-5. Run `npm run blueprint:watch` for non-script properties.
-6. Run `npm run blueprint:reverse-sync` when Studio-side edits need guarded pullback.
+1. **Open Studio** → enable plugin → enable HTTP requests
+2. **Register place:** `npm run place:detect`
+3. **Start Rojo** against the place project (path from `npm run place:status`)
+4. **Edit scripts** in the resolved `src/` directory
+5. **Property sync:** `npm run blueprint:watch` for non-script properties
+6. **Reverse sync:** `npm run blueprint:reverse-sync` when you've made Studio-side edits
 
-## Reverse-sync safeguards
+---
 
-- Uses hash baselines per tracked script.
-- Pulls Studio -> file only when Studio changed and local did not.
-- Writes conflicts when both sides changed.
-- Place mode paths:
-  - `blueprint-v1/places/<slug>/.reverse-sync-state.json`
-  - `blueprint-v1/places/<slug>/.reverse-sync-conflicts/`
-- Legacy mode paths:
-  - `blueprint-v1/.reverse-sync-state.json`
-  - `blueprint-v1/.reverse-sync-conflicts/`
+## Reverse Sync Safeguards
+
+The reverse sync system prevents accidental data loss:
+
+| Safeguard          | How It Works                                                              |
+| ------------------ | ------------------------------------------------------------------------- |
+| **Hash baselines** | Each tracked script has a stored hash — only true changes trigger pulls   |
+| **One-way guard**  | Only pulls when Studio changed and local did **not**                      |
+| **Conflict files** | When both sides changed, writes a `.conflict` file instead of overwriting |
+| **State tracking** | Persists sync state between runs                                          |
+
+### State File Locations
+
+| Mode            | State File                                            | Conflict Directory                                    |
+| --------------- | ----------------------------------------------------- | ----------------------------------------------------- |
+| **Multi-place** | `blueprint-v1/places/<slug>/.reverse-sync-state.json` | `blueprint-v1/places/<slug>/.reverse-sync-conflicts/` |
+| **Legacy**      | `blueprint-v1/.reverse-sync-state.json`               | `blueprint-v1/.reverse-sync-conflicts/`               |

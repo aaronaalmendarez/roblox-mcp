@@ -1,24 +1,69 @@
 # MCP Client Configurations
 
-This server is provider-agnostic and uses MCP stdio transport, so it works with any MCP host that can launch a local command.
+Roblox Studio MCP uses **stdio transport** and is provider-agnostic — it works with any MCP host that can launch a local command.
 
-## Shared command
+---
 
-Use this command in any MCP client:
+## Universal Command
 
-```text
+Use this in any client that accepts a command string:
+
+```
 npx -y robloxstudio-mcp@latest
 ```
 
-If your client has trouble resolving `npx` on Windows, use:
+> **Windows note:** If `npx` fails to resolve, prefix with `cmd /c`:
+> ```
+> cmd /c npx -y robloxstudio-mcp@latest
+> ```
 
-```text
-cmd /c npx -y robloxstudio-mcp@latest
+---
+
+## Claude Code
+
+```bash
+claude mcp add robloxstudio -- npx robloxstudio-mcp
 ```
+
+## Gemini CLI
+
+```bash
+gemini mcp add robloxstudio npx --trust -- -y robloxstudio-mcp
+```
+
+## Claude Desktop
+
+Add to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "robloxstudio-mcp": {
+      "command": "npx",
+      "args": ["-y", "robloxstudio-mcp@latest"]
+    }
+  }
+}
+```
+
+<details>
+<summary>Windows fallback</summary>
+
+```json
+{
+  "mcpServers": {
+    "robloxstudio-mcp": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "robloxstudio-mcp@latest"]
+    }
+  }
+}
+```
+</details>
 
 ## Codex CLI
 
-File: `~/.codex/config.toml`
+Add to `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.robloxstudio]
@@ -26,17 +71,19 @@ command = "npx"
 args = ["-y", "robloxstudio-mcp@latest"]
 ```
 
-Windows fallback:
+<details>
+<summary>Windows fallback</summary>
 
 ```toml
 [mcp_servers.robloxstudio]
 command = "cmd"
 args = ["/c", "npx", "-y", "robloxstudio-mcp@latest"]
 ```
+</details>
 
 ## OpenCode
 
-File: `~/.config/opencode/opencode.json`
+Add to `~/.config/opencode/opencode.json`:
 
 ```json
 {
@@ -51,7 +98,8 @@ File: `~/.config/opencode/opencode.json`
 }
 ```
 
-Windows fallback:
+<details>
+<summary>Windows fallback</summary>
 
 ```json
 {
@@ -65,20 +113,11 @@ Windows fallback:
   }
 }
 ```
+</details>
 
-## Claude Code
+## Other mcpServers JSON Clients
 
-```bash
-claude mcp add robloxstudio -- npx robloxstudio-mcp
-```
-
-## Gemini CLI
-
-```bash
-gemini mcp add robloxstudio npx --trust -- -y robloxstudio-mcp
-```
-
-## Claude Desktop and other mcpServers JSON clients
+Any client that reads a `mcpServers` JSON block (Cursor, Windsurf, etc.):
 
 ```json
 {
@@ -91,22 +130,21 @@ gemini mcp add robloxstudio npx --trust -- -y robloxstudio-mcp
 }
 ```
 
-Windows fallback:
+---
 
-```json
-{
-  "mcpServers": {
-    "robloxstudio-mcp": {
-      "command": "cmd",
-      "args": ["/c", "npx", "-y", "robloxstudio-mcp@latest"]
-    }
-  }
-}
+## Validation Checklist
+
+After setup, verify everything is connected:
+
+1. ✅ Roblox Studio is open and the plugin is active (green indicator)
+2. ✅ **Game Settings → Security → Allow HTTP Requests** is enabled
+3. ✅ MCP client shows the server as connected
+4. ✅ Calling `get_place_info` returns a valid response
+
+### Quick health check
+
+```bash
+curl http://localhost:3002/health
 ```
 
-## Validation checklist
-
-1. Roblox Studio plugin is active.
-2. Game Settings > Security > Allow HTTP Requests is enabled.
-3. MCP client shows the server as connected.
-4. Calling `get_place_info` returns a response.
+Expected: `pluginConnected: true`, `mcpServerActive: true`
