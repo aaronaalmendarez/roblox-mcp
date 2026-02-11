@@ -444,6 +444,73 @@ echo '{"$schema": "./schema.json", "instances": []}' > blueprint-v1/places/<slug
 
 **CRITICAL:** `instances.json` MUST have `"instances": []` as an **array**, not an object `{}`. The sync script will fail with "Manifest must contain an instances array" if you use `{}`.
 
+### Multi-Place Projects (IMPORTANT)
+
+**ALWAYS use Blueprint V1 for every game project.** Each Roblox place gets its own folder under `blueprint-v1/places/`.
+
+When working on multiple games:
+1. Each place has its own folder: `blueprint-v1/places/<slug>/`
+2. The `registry.json` maps place IDs to slugs
+3. Switch places with `npm run place:detect` when changing Studio places
+
+### Full default.project.json Template
+
+**ALWAYS use this complete template** when creating a new place folder. It includes all Roblox services:
+
+```json
+{
+  "name": "YourGameName",
+  "tree": {
+    "$className": "DataModel",
+    "Workspace": { "$path": "src/Workspace" },
+    "Lighting": { "$path": "src/Lighting" },
+    "ReplicatedStorage": { "$path": "src/ReplicatedStorage" },
+    "ReplicatedFirst": { "$path": "src/ReplicatedFirst" },
+    "ServerScriptService": { "$path": "src/ServerScriptService" },
+    "ServerStorage": { "$path": "src/ServerStorage" },
+    "StarterGui": { "$path": "src/StarterGui" },
+    "StarterPack": { "$path": "src/StarterPack" },
+    "StarterPlayer": {
+      "StarterCharacterScripts": { "$path": "src/StarterPlayer/StarterCharacterScripts" },
+      "StarterPlayerScripts": { "$path": "src/StarterPlayer/StarterPlayerScripts" }
+    },
+    "Teams": { "$path": "src/Teams" },
+    "SoundService": { "$path": "src/SoundService" },
+    "TextChatService": { "$path": "src/TextChatService" }
+  }
+}
+```
+
+### Creating a New Place Folder
+
+**Complete setup for a new game:**
+
+```bash
+# 1. Detect the place in Studio
+npm run place:detect
+
+# 2. Create all directories
+mkdir -p blueprint-v1/places/<slug>/src/{Workspace,Lighting,ReplicatedStorage,ReplicatedFirst,ServerScriptService,ServerStorage,StarterGui,StarterPack,Teams,SoundService,TextChatService}
+mkdir -p blueprint-v1/places/<slug>/src/StarterPlayer/{StarterCharacterScripts,StarterPlayerScripts}
+mkdir -p blueprint-v1/places/<slug>/properties
+
+# 3. Create instances.json
+echo '{"$schema": "./schema.json", "instances": []}' > blueprint-v1/places/<slug>/properties/instances.json
+
+# 4. Create .gitkeep files for empty directories
+for dir in Workspace Lighting ReplicatedFirst ServerStorage StarterGui StarterPack Teams SoundService TextChatService; do
+  echo "" > blueprint-v1/places/<slug>/src/$dir/.gitkeep
+done
+
+# 5. Create default.project.json with the full template above
+
+# 6. Verify
+npm run place:status
+
+# 7. Start Rojo
+rojo serve blueprint-v1/places/<slug>/default.project.json
+```
+
 **Step 4: Start Rojo**
 
 ```bash
