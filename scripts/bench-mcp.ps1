@@ -10,12 +10,13 @@ function Parse-ToolText($resp) {
 }
 
 $ErrorActionPreference = 'Stop'
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 
 $startedServer = $null
 try {
   $health = Invoke-RestMethod -Uri 'http://localhost:3002/health' -Method Get -TimeoutSec 2
 } catch {
-  $startedServer = Start-Process -FilePath node -ArgumentList 'dist/index.js' -WorkingDirectory 'C:\Users\aaron\OneDrive\Desktop\rblxMCP' -PassThru
+  $startedServer = Start-Process -FilePath node -ArgumentList 'dist/index.js' -WorkingDirectory $repoRoot -PassThru
   Start-Sleep -Seconds 3
   $health = Invoke-RestMethod -Uri 'http://localhost:3002/health' -Method Get -TimeoutSec 3
 }

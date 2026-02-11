@@ -9,7 +9,7 @@ function Parse-ToolText($resp) {
   return $resp
 }
 
-$p = Start-Process -FilePath node -ArgumentList 'dist/index.js' -WorkingDirectory 'C:\Users\aaron\OneDrive\Desktop\rblxMCP' -PassThru
+$p = Start-Process -FilePath node -ArgumentList 'dist/index.js' -WorkingDirectory $repoRoot -PassThru
 Start-Sleep -Seconds 3
 
 $results = [ordered]@{}
@@ -71,3 +71,4 @@ finally {
 }
 
 $results | ConvertTo-Json -Depth 10
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
