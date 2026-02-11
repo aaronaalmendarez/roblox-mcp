@@ -63,7 +63,7 @@ npm run build:plugin
 node dist/index.js
 ```
 
-Note: `npx -y robloxstudio-mcp@latest` runs the upstream npm package from `boshyxd/robloxstudio-mcp`, not this fork.
+Note: `npx -y robloxstudio-mcp@latest` runs the upstream package from `boshyxd/robloxstudio-mcp`.
 
 ## ✨ Features
 
@@ -216,19 +216,19 @@ Note: `npx -y robloxstudio-mcp@latest` runs the upstream npm package from `boshy
 
 Works with **any MCP-compatible client**.
 
-For this fork/local workspace:
+Local repository command:
 
 ```bash
 node C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js
 ```
 
-Your published package (this fork):
+Published package:
 
 ```
 npx -y @aaronalm19/roblox-mcp@latest
 ```
 
-Upstream package (original project):
+Upstream original package:
 
 ```
 npx -y robloxstudio-mcp@latest
