@@ -59,10 +59,11 @@ npm run build:plugin
 ### 3. Connect Your AI Client
 
 ```bash
-npx -y robloxstudio-mcp@latest
+# This fork / local harness
+node dist/index.js
 ```
 
-That's it. Your AI assistant now has full access to Roblox Studio.
+Note: `npx -y robloxstudio-mcp@latest` runs the upstream npm package from `boshyxd/robloxstudio-mcp`, not this fork.
 
 ## ✨ Features
 
@@ -213,7 +214,15 @@ That's it. Your AI assistant now has full access to Roblox Studio.
 
 ## 🔌 Client Setup
 
-Works with **any MCP-compatible client**. Use this one command:
+Works with **any MCP-compatible client**.
+
+For this fork/local workspace:
+
+```bash
+node C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js
+```
+
+Upstream package (original project):
 
 ```
 npx -y robloxstudio-mcp@latest
@@ -223,7 +232,7 @@ npx -y robloxstudio-mcp@latest
 <summary><strong>Claude Code</strong></summary>
 
 ```bash
-claude mcp add robloxstudio -- npx robloxstudio-mcp
+claude mcp add robloxstudio -- node C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js
 ```
 </details>
 
@@ -231,7 +240,7 @@ claude mcp add robloxstudio -- npx robloxstudio-mcp
 <summary><strong>Gemini CLI</strong></summary>
 
 ```bash
-gemini mcp add robloxstudio npx --trust -- -y robloxstudio-mcp
+gemini mcp add robloxstudio node --trust -- C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js
 ```
 </details>
 
@@ -242,8 +251,8 @@ gemini mcp add robloxstudio npx --trust -- -y robloxstudio-mcp
 {
   "mcpServers": {
     "robloxstudio-mcp": {
-      "command": "npx",
-      "args": ["-y", "robloxstudio-mcp@latest"]
+      "command": "node",
+      "args": ["C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js"]
     }
   }
 }
@@ -256,8 +265,8 @@ gemini mcp add robloxstudio npx --trust -- -y robloxstudio-mcp
 `~/.codex/config.toml`:
 ```toml
 [mcp_servers.robloxstudio]
-command = "npx"
-args = ["-y", "robloxstudio-mcp@latest"]
+command = "node"
+args = ["C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js"]
 ```
 </details>
 
@@ -271,7 +280,7 @@ args = ["-y", "robloxstudio-mcp@latest"]
     "robloxstudio": {
       "type": "local",
       "enabled": true,
-      "command": ["npx", "-y", "robloxstudio-mcp@latest"]
+      "command": ["node", "C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js"]
     }
   }
 }
@@ -281,11 +290,11 @@ args = ["-y", "robloxstudio-mcp@latest"]
 <details>
 <summary><strong>Windows troubleshooting</strong></summary>
 
-If `npx` doesn't resolve, wrap with `cmd`:
+If your client cannot launch `node` directly, wrap with `cmd`:
 ```json
 {
   "command": "cmd",
-  "args": ["/c", "npx", "-y", "robloxstudio-mcp@latest"]
+  "args": ["/c", "node", "C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js"]
 }
 ```
 </details>
@@ -409,15 +418,20 @@ robloxstudio-mcp/
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please open an issue or pull request on [GitHub](https://github.com/boshyxd/robloxstudio-mcp).
+Contributions are welcome! Please open an issue or pull request on [GitHub](https://github.com/aaronaalmendarez/roblox-mcp).
 
 ```bash
 # Development workflow
-git clone https://github.com/boshyxd/robloxstudio-mcp.git
-cd robloxstudio-mcp
+git clone https://github.com/aaronaalmendarez/roblox-mcp.git
+cd roblox-mcp
 npm install
 npm run dev
 ```
+
+## 🙌 Acknowledgements
+
+- Original project: [`boshyxd/robloxstudio-mcp`](https://github.com/boshyxd/robloxstudio-mcp)
+- This repository extends that foundation for multi-agent workflows (Codex/OpenCode and local blueprint-first development).
 
 ## 📄 License
 
