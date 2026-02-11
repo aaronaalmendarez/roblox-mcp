@@ -35,9 +35,7 @@
 
 ### 1. Install the Studio Plugin
 
-**Easiest — Roblox Creator Store:**
-
-👉 [Install from Creator Store](https://create.roblox.com/store/asset/132985143757536) — plugin appears immediately, no restart needed.
+Install the plugin manually from this repository (see below).
 
 <details>
 <summary>Alternative methods</summary>
