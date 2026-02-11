@@ -222,6 +222,12 @@ For this fork/local workspace:
 node C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js
 ```
 
+Your published package (this fork):
+
+```
+npx -y @aaronaalmendarez/roblox-mcp@latest
+```
+
 Upstream package (original project):
 
 ```
