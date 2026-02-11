@@ -549,55 +549,117 @@ This starts:
 
 **Note:** This will fail if port 3002 or 34872 is already in use. Kill existing processes first.
 
-### ⚠️ CRITICAL: Always Edit Local Files, Never Edit Via MCP
+### ⚠️ CRITICAL: Always Edit Local Files, Then Push to Studio
 
 **NEVER use MCP tools to edit scripts directly in Studio.** Always:
 
 1. **Edit local `.luau` files** in `blueprint-v1/places/<slug>/src/`
-2. **Connect Rojo in Studio** (View → Rojo → Connect to `localhost:34872`)
-3. **Rojo auto-syncs** your changes
+2. **Run Luau lint** to catch errors
+3. **Push to Studio** using the push script
 
 #### Correct Workflow
 
 ```bash
-# 1. Start Rojo (if not running)
-rojo serve blueprint-v1/places/<slug>/default.project.json
-
-# 2. In Studio: View → Rojo → Connect to localhost:34872
-
-# 3. Edit local file in IDE
+# 1. Edit local file in your IDE
 #    blueprint-v1/places/<slug>/src/ServerScriptService/Main.server.luau
 
-# 4. Run Luau lint to catch errors BEFORE Rojo syncs
+# 2. Run Luau lint to catch errors BEFORE pushing
 npm run luau:lint
 
-# 5. Fix any lint errors
+# 3. Fix any lint errors (must show findings=0)
 
-# 6. Rojo automatically syncs to Studio when you save
+# 4. Push to Studio
+node scripts/push-script-fast.mjs \
+  --instance game.ServerScriptService.Main \
+  --file blueprint-v1/places/<slug>/src/ServerScriptService/Main.server.luau
+```
+
+#### Push Script Usage
+
+```bash
+# Basic push
+node scripts/push-script-fast.mjs --instance <StudioPath> --file <LocalFile>
+
+# Examples:
+node scripts/push-script-fast.mjs \
+  --instance game.ServerScriptService.GameLoop \
+  --file blueprint-v1/places/mygame/src/ServerScriptService/GameLoop.server.luau
+
+node scripts/push-script-fast.mjs \
+  --instance game.StarterPlayer.StarterPlayerScripts.ClientController \
+  --file blueprint-v1/places/mygame/src/StarterPlayer/StarterPlayerScripts/ClientController.client.luau
+
+node scripts/push-script-fast.mjs \
+  --instance game.ReplicatedStorage.Config \
+  --file blueprint-v1/places/mygame/src/ReplicatedStorage/Config.module.luau
+```
+
+#### Push Script Options
+
+| Flag | Description |
+|------|-------------|
+| `--instance <path>` | Studio script path (e.g., `game.ServerScriptService.Main`) |
+| `--file <path>` | Local `.luau` file path |
+| `--verbose` | Show detailed output |
+| `--no-verify` | Skip verification after write |
+| `--gzip` | Use gzip compression for large files |
+
+#### Push All Scripts in a Place
+
+```bash
+# Push server scripts
+for file in blueprint-v1/places/<slug>/src/ServerScriptService/*.server.luau; do
+  name=$(basename "$file" .server.luau)
+  node scripts/push-script-fast.mjs \
+    --instance "game.ServerScriptService.$name" \
+    --file "$file"
+done
+
+# Push client scripts
+for file in blueprint-v1/places/<slug>/src/StarterPlayer/StarterPlayerScripts/*.client.luau; do
+  name=$(basename "$file" .client.luau)
+  node scripts/push-script-fast.mjs \
+    --instance "game.StarterPlayer.StarterPlayerScripts.$name" \
+    --file "$file"
+done
+
+# Push modules
+for file in blueprint-v1/places/<slug>/src/ReplicatedStorage/*.module.luau; do
+  name=$(basename "$file" .module.luau)
+  node scripts/push-script-fast.mjs \
+    --instance "game.ReplicatedStorage.$name" \
+    --file "$file"
+done
 ```
 
 #### Why This Matters
 
 - **Source control**: Local files are tracked in git, Studio scripts are not
 - **Luau lint**: Catch errors BEFORE they reach Studio
-- **No MCP edits**: MCP should READ Studio, not WRITE to it
-- **Rojo handles sync**: Let Rojo do its job
+- **No MCP edits**: MCP tools should READ Studio, not WRITE to it
+- **Explicit sync**: You control when changes go to Studio
 
-#### Manual Push (if Rojo isn't connected)
+#### Checklist Before Pushing
 
-```bash
-# Push a single file to Studio
-node scripts/push-script-fast.mjs \
-  --instance game.ServerScriptService.Main \
-  --file blueprint-v1/places/<slug>/src/ServerScriptService/Main.server.luau
-```
-
-#### Checklist
-
-- [ ] Local file edited
+- [ ] Local file edited and saved
 - [ ] `npm run luau:lint` passes with `findings=0`
-- [ ] Rojo connected in Studio
-- [ ] File saved → Rojo syncs → Studio updates
+- [ ] MCP server running on `localhost:3002`
+- [ ] Studio plugin connected (green indicator)
+- [ ] Push command executed successfully
+
+#### Troubleshooting Push
+
+**Error: `Cannot POST /mcp/set_script_source_fast`**
+- MCP server needs restart after `npm run build`
+- Kill old process and start fresh: `node dist/index.js`
+
+**Error: `pluginConnected: false`**
+- Plugin not installed or not active in Studio
+- Check Studio plugin toolbar for green indicator
+
+**Error: `Script not found`**
+- The script doesn't exist in Studio yet
+- Create it first: `create_object(className: "Script", parent: "...", name: "...")`
 
 ---
 
