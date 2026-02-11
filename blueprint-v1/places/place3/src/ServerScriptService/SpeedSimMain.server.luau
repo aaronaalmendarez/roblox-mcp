@@ -4,9 +4,7 @@ local DataStoreService = game:GetService("DataStoreService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
-local speedSimConfigModule = ReplicatedStorage:WaitForChild("SpeedSimConfig")
-local requireAny: any = require
-local Config = requireAny(speedSimConfigModule)
+local Config = require(ReplicatedStorage:WaitForChild("SpeedSimConfig"))
 
 local REMOTES_NAME = "SpeedSimRemotes"
 local WORLD_NAME = "SpeedSimWorld"
@@ -54,7 +52,7 @@ local function getZone(index)
             gainMultiplier = 1,
             gemsMultiplier = 1,
             color = Color3.fromRGB(255, 255, 255),
-        }, 1
+        }
     end
 
     local clamped = math.clamp(index, 1, #zones)
@@ -94,13 +92,11 @@ local function getUpgradeCost(upgradeId, currentLevel)
 end
 
 local function getSprintMultiplier(profile)
-    local sprintLevel = tonumber(profile.upgrades.sprint) or 0
-    return 1 + (sprintLevel * Config.SprintUpgradeMultiplier)
+    return 1 + (profile.upgrades.sprint * Config.SprintUpgradeMultiplier)
 end
 
 local function getActiveZone(profile)
-    local zone, zoneIndex = getZone(tonumber(profile.unlockedZoneIndex) or 1)
-    return zone, zoneIndex
+    return getZone(profile.unlockedZoneIndex or 1)
 end
 
 local function getQuest(profile)
@@ -128,15 +124,13 @@ local function getDailyRemaining(profile)
 end
 
 local function computeWalkSpeed(profile)
-    local speedStat = Config.BaseWalkSpeed + ((tonumber(profile.speed) or 0) * Config.WalkSpeedPerSpeed)
+    local speedStat = Config.BaseWalkSpeed + (profile.speed * Config.WalkSpeedPerSpeed)
     return math.clamp(speedStat, Config.BaseWalkSpeed, Config.MaxWalkSpeed)
 end
 
 local function computeJumpPower(profile)
-    local baseJumpPower = tonumber(Config.BaseJumpPower) or 50
-    local jumpGain = tonumber(Config.JumpPowerPerUpgrade) or 0
-    local jumpPower = baseJumpPower + ((tonumber(profile.upgrades.jump) or 0) * jumpGain)
-    return math.max(baseJumpPower, jumpPower)
+    local jumpPower = Config.BaseJumpPower + (profile.upgrades.jump * Config.JumpPowerPerUpgrade)
+    return math.max(Config.BaseJumpPower, jumpPower)
 end
 
 local function profileFor(player)
@@ -172,16 +166,7 @@ local remotesFolder = ensureFolder(ReplicatedStorage, REMOTES_NAME)
 local stateRemote = ensureRemote("RemoteEvent", "State", remotesFolder)
 local notifyRemote = ensureRemote("RemoteEvent", "Notify", remotesFolder)
 local actionRemote = ensureRemote("RemoteEvent", "Action", remotesFolder)
-local getStateRemote: any = ensureRemote("RemoteFunction", "GetState", remotesFolder)
-
-local function notify(player, title, message, speedGain, gemGain)
-    notifyRemote:FireClient(player, {
-        title = title or "Update",
-        message = message or "",
-        speedGain = speedGain or 0,
-        gemGain = gemGain or 0,
-    })
-end
+local getStateRemote = ensureRemote("RemoteFunction", "GetState", remotesFolder)
 
 local function serializeState(player, profile)
     local zone, zoneIndex = getActiveZone(profile)
@@ -207,7 +192,7 @@ local function serializeState(player, profile)
         },
         computed = {
             walkSpeed = computeWalkSpeed(profile),
-            jumpPower = tonumber((computeJumpPower :: any)(profile)) or 0,
+            jumpPower = computeJumpPower(profile),
             rebirthCost = getRebirthCost(profile.rebirths),
             jumpUpgradeCost = getUpgradeCost("jump", profile.upgrades.jump),
             sprintUpgradeCost = getUpgradeCost("sprint", profile.upgrades.sprint),
@@ -325,10 +310,14 @@ local function addQuestProgress(player, questType, amount)
         profile.steps += quest.rewardSpeed
         profile.questIndex += 1
 
-        notify(player, "Quest Complete", quest.title .. " complete!", quest.rewardSpeed, quest.rewardGems)
+        notifyRemote:FireClient(player, {
+            title = "Quest Complete",
+            message = quest.title .. " complete!",
+            speedGain = quest.rewardSpeed,
+            gemGain = quest.rewardGems,
+        })
 
-        local nextQuest = getQuest(profile)
-        quest = nextQuest
+        quest = getQuest(profile)
     end
 end
 
@@ -366,8 +355,12 @@ local function reward(player, speedGain, gemGain, reason, questType, questAmount
     applyCharacterStats(player)
     pushState(player)
 
-    if type(reason) == "string" and reason ~= "" then
-        notify(player, reason, "", finalSpeed, finalGems)
+    if reason then
+        notifyRemote:FireClient(player, {
+            title = reason,
+            speedGain = finalSpeed,
+            gemGain = finalGems,
+        })
     end
 end
 
@@ -398,7 +391,7 @@ end
 
 local function loadProfile(player)
     local profile = createDefaultProfile()
-    local ok, data = pcall(function(): any
+    local ok, data = pcall(function()
         return profileStore:GetAsync(tostring(player.UserId))
     end)
 
@@ -535,7 +528,10 @@ local function buildWorld()
             end
 
             if profile.speed < zone.requiredSpeed then
-                notify(player, "Zone Locked", ("Need %d speed to unlock %s."):format(zone.requiredSpeed, zone.title), 0, 0)
+                notifyRemote:FireClient(player, {
+                    title = "Zone Locked",
+                    message = ("Need %d speed to unlock %s."):format(zone.requiredSpeed, zone.title),
+                })
                 return
             end
 
@@ -544,7 +540,10 @@ local function buildWorld()
             updateLeaderstats(player)
             pushState(player)
 
-            notify(player, "Zone Unlocked", zone.title .. " is now active!", 0, 0)
+            notifyRemote:FireClient(player, {
+                title = "Zone Unlocked",
+                message = zone.title .. " is now active!",
+            })
         end)
     end
 
@@ -580,7 +579,10 @@ local function buildWorld()
         end
 
         if profile.speed < Config.WinGateSpeed then
-            notify(player, "Gate Locked", ("Need %d speed to claim wins."):format(Config.WinGateSpeed), 0, 0)
+            notifyRemote:FireClient(player, {
+                title = "Gate Locked",
+                message = ("Need %d speed to claim wins."):format(Config.WinGateSpeed),
+            })
             return
         end
 
@@ -735,7 +737,10 @@ local function onAction(player, action)
     if action == "rebirth" then
         local cost = getRebirthCost(profile.rebirths)
         if profile.speed < cost then
-            notify(player, "Rebirth Failed", ("Need %d speed."):format(cost), 0, 0)
+            notifyRemote:FireClient(player, {
+                title = "Rebirth Failed",
+                message = ("Need %d speed."):format(cost),
+            })
             return
         end
 
@@ -745,43 +750,55 @@ local function onAction(player, action)
         profile.gems += 50 + (profile.rebirths * 10)
         markDirty(player)
 
-        notify(player, "Rebirth Complete", ("Rebirth #%d unlocked! Passive gains boosted."):format(profile.rebirths), 0, 0)
+        notifyRemote:FireClient(player, {
+            title = "Rebirth Complete",
+            message = ("Rebirth #%d unlocked! Passive gains boosted."):format(profile.rebirths),
+        })
     elseif action == "buy_jump" then
         if profile.upgrades.jump >= Config.MaxJumpUpgrade then
-            notify(player, "Maxed", "Jump Core is max level.", 0, 0)
+            notifyRemote:FireClient(player, { title = "Maxed", message = "Jump Core is max level." })
             return
         end
 
         local cost = getUpgradeCost("jump", profile.upgrades.jump)
         if profile.gems < cost then
-            notify(player, "Not Enough Gems", ("Need %d gems."):format(cost), 0, 0)
+            notifyRemote:FireClient(player, { title = "Not Enough Gems", message = ("Need %d gems."):format(cost) })
             return
         end
 
         profile.gems -= cost
         profile.upgrades.jump += 1
         markDirty(player)
-        notify(player, "Upgrade Purchased", ("Jump Core Lv.%d"):format(profile.upgrades.jump), 0, 0)
+        notifyRemote:FireClient(player, {
+            title = "Upgrade Purchased",
+            message = ("Jump Core Lv.%d"):format(profile.upgrades.jump),
+        })
     elseif action == "buy_sprint" then
         if profile.upgrades.sprint >= Config.MaxSprintUpgrade then
-            notify(player, "Maxed", "Sprint Engine is max level.", 0, 0)
+            notifyRemote:FireClient(player, { title = "Maxed", message = "Sprint Engine is max level." })
             return
         end
 
         local cost = getUpgradeCost("sprint", profile.upgrades.sprint)
         if profile.gems < cost then
-            notify(player, "Not Enough Gems", ("Need %d gems."):format(cost), 0, 0)
+            notifyRemote:FireClient(player, { title = "Not Enough Gems", message = ("Need %d gems."):format(cost) })
             return
         end
 
         profile.gems -= cost
         profile.upgrades.sprint += 1
         markDirty(player)
-        notify(player, "Upgrade Purchased", ("Sprint Engine Lv.%d"):format(profile.upgrades.sprint), 0, 0)
+        notifyRemote:FireClient(player, {
+            title = "Upgrade Purchased",
+            message = ("Sprint Engine Lv.%d"):format(profile.upgrades.sprint),
+        })
     elseif action == "claim_daily" then
         local remaining = getDailyRemaining(profile)
         if remaining > 0 then
-            notify(player, "Daily Locked", ("Daily reward in %dm %ds"):format(math.floor(remaining / 60), remaining % 60), 0, 0)
+            notifyRemote:FireClient(player, {
+                title = "Daily Locked",
+                message = ("Daily reward in %dm %ds"):format(math.floor(remaining / 60), remaining % 60),
+            })
             return
         end
 
@@ -795,7 +812,7 @@ local function onAction(player, action)
     pushState(player)
 end
 
-(getStateRemote :: any).OnServerInvoke = function(player): any
+getStateRemote.OnServerInvoke = function(player)
     local profile = profileFor(player)
     if not profile then
         return nil
@@ -852,7 +869,7 @@ RunService.Heartbeat:Connect(function(dt)
                 if humanoid and humanoid.MoveDirection.Magnitude > 0.12 then
                     local rebirthMultiplier = 1 + (profile.rebirths * Config.RebirthSpeedMultiplier)
                     local gain = Config.BaseSpeedGainPerStep * rebirthMultiplier * getSprintMultiplier(profile)
-                    reward(player, gain, 0, "", "gain_speed", math.max(1, math.floor(gain)))
+                    reward(player, gain, 0, nil, "gain_speed", math.max(1, math.floor(gain)))
                 end
             end
         end
@@ -888,7 +905,10 @@ task.spawn(function()
 
         pushAllStates()
         for _, player in ipairs(Players:GetPlayers()) do
-            notify(player, "World Event", chosen.title .. " started!", 0, 0)
+            notifyRemote:FireClient(player, {
+                title = "World Event",
+                message = chosen.title .. " started!",
+            })
         end
 
         task.wait(Config.EventDurationSeconds)

@@ -10,52 +10,10 @@ local remotes = ReplicatedStorage:WaitForChild("SpeedSimRemotes")
 local stateRemote = remotes:WaitForChild("State")
 local notifyRemote = remotes:WaitForChild("Notify")
 local actionRemote = remotes:WaitForChild("Action")
-local getStateRemote: any = remotes:WaitForChild("GetState")
+local getStateRemote = remotes:WaitForChild("GetState")
 
 local camera = workspace.CurrentCamera
 local baseFov = 70
-
-local defaultProfile = {
-    speed = 0,
-    steps = 0,
-    gems = 0,
-    wins = 0,
-    rebirths = 0,
-    upgrades = {
-        jump = 0,
-        sprint = 0,
-    },
-}
-
-local defaultComputed = {
-    rebirthCost = 0,
-    jumpUpgradeCost = 0,
-    sprintUpgradeCost = 0,
-    dailyClaimRemaining = 0,
-    walkSpeed = 16,
-}
-
-local defaultEvent = {
-    active = false,
-    title = "No Event",
-    remaining = 0,
-    speedMultiplier = 1,
-    gemsMultiplier = 1,
-}
-
-local defaultProgression = {
-    zone = {
-        title = "Unknown",
-        gainMultiplier = 1,
-    },
-    quest = {
-        title = "No quest",
-        target = 1,
-        progress = 0,
-        rewardGems = 0,
-        rewardSpeed = 0,
-    },
-}
 
 local function formatNumber(number)
     local n = math.floor(tonumber(number) or 0)
@@ -427,12 +385,12 @@ local function updateUi(state)
         return
     end
 
-    local profile = type(state.profile) == "table" and state.profile or defaultProfile
-    local computed = type(state.computed) == "table" and state.computed or defaultComputed
-    local event = type(state.event) == "table" and state.event or defaultEvent
-    local progression = type(state.progression) == "table" and state.progression or defaultProgression
-    local zone = type(progression.zone) == "table" and progression.zone or defaultProgression.zone
-    local quest = type(progression.quest) == "table" and progression.quest or defaultProgression.quest
+    local profile = state.profile or {}
+    local computed = state.computed or {}
+    local event = state.event or {}
+    local progression = state.progression or {}
+    local zone = progression.zone or {}
+    local quest = progression.quest or {}
 
     speedValue.Text = formatNumber(profile.speed)
     stepsValue.Text = formatNumber(profile.steps)
@@ -497,7 +455,7 @@ notifyRemote.OnClientEvent:Connect(function(payload)
     toast(titleText, tostring(message))
 end)
 
-local ok, initialState = pcall(function(): any
+local ok, initialState = pcall(function()
     return getStateRemote:InvokeServer()
 end)
 
