@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/robloxstudio-mcp"><img src="https://img.shields.io/npm/v/robloxstudio-mcp?style=flat-square&color=cb3837" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/@aaronalm19/roblox-mcp"><img src="https://img.shields.io/npm/v/%40aaronalm19%2Froblox-mcp?style=flat-square&color=cb3837" alt="npm version" /></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen?style=flat-square" alt="Node.js" /></a>
   <a href="https://github.com/boshyxd/robloxstudio-mcp/issues"><img src="https://img.shields.io/github/issues/boshyxd/robloxstudio-mcp?style=flat-square" alt="Issues" /></a>
@@ -225,7 +225,7 @@ node C:/Users/aaron/OneDrive/Desktop/rblxMCP/dist/index.js
 Your published package (this fork):
 
 ```
-npx -y @aaronaalmendarez/roblox-mcp@latest
+npx -y @aaronalm19/roblox-mcp@latest
 ```
 
 Upstream package (original project):
