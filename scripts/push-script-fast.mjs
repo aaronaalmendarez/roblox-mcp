@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { gzipSync } from 'node:zlib';
-import { stripUtf8Bom } from './lib/text-utils.mjs';
+import { normalizeLuaQuotedNewlines, stripUtf8Bom } from './lib/text-utils.mjs';
 
 const BASE = (process.env.ROBLOX_MCP_URL || 'http://localhost:3002').replace(/\/$/, '');
 
@@ -77,7 +77,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const abs = path.resolve(process.cwd(), args.file);
   const sourceRaw = await fs.readFile(abs, 'utf8');
-  const source = stripUtf8Bom(sourceRaw);
+  const source = normalizeLuaQuotedNewlines(stripUtf8Bom(sourceRaw));
 
   const started = Date.now();
   const payload = args.gzip
