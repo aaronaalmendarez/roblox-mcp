@@ -1060,27 +1060,29 @@ class RobloxStudioMCPServer {
     }
 
     const LEGACY_PORT = 3002;
+    let legacyServer: ReturnType<typeof createHttpServer> | undefined;
     if (boundPort !== LEGACY_PORT) {
-      const legacyServer = createHttpServer(this.tools, this.bridge);
+      const legacy = createHttpServer(this.tools, this.bridge);
+      legacyServer = legacy;
       try {
         await new Promise<void>((resolve, reject) => {
           const onError = (err: NodeJS.ErrnoException) => {
             if (err.code === 'EADDRINUSE') {
-              legacyServer.removeListener('error', onError);
+              legacy.removeListener('error', onError);
               reject(err);
             } else {
               reject(err);
             }
           };
-          legacyServer.once('error', onError);
-          legacyServer.listen(LEGACY_PORT, host, () => {
-            legacyServer.removeListener('error', onError);
+          legacy.once('error', onError);
+          legacy.listen(LEGACY_PORT, host, () => {
+            legacy.removeListener('error', onError);
             console.error(`Legacy HTTP server also listening on ${host}:${LEGACY_PORT} for old plugins`);
             resolve();
           });
         });
 
-        (legacyServer as any).setMCPServerActive(true);
+        (legacy as any).setMCPServerActive(true);
       } catch {
 
         console.error(`Legacy port ${LEGACY_PORT} in use, skipping backward-compat listener`);
@@ -1097,6 +1099,8 @@ class RobloxStudioMCPServer {
     console.error('Waiting for Studio plugin to connect...');
 
     setInterval(() => {
+      (httpServer as any).trackMCPActivity();
+      if (legacyServer) (legacyServer as any).trackMCPActivity();
       const pluginConnected = (httpServer as any).isPluginConnected();
       const mcpActive = (httpServer as any).isMCPServerActive();
 
