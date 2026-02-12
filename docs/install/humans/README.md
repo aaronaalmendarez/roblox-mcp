@@ -82,7 +82,7 @@ Or package mode:
 ```toml
 [mcp_servers.robloxstudio]
 command = "npx"
-args = ["-y", "robloxstudio-mcp@latest"]
+args = ["-y", "@aaronalm19/roblox-mcp@latest"]
 ```
 
 ### Claude / OpenCode / others
@@ -90,7 +90,7 @@ args = ["-y", "robloxstudio-mcp@latest"]
 Use the same command pattern:
 
 ```text
-npx -y robloxstudio-mcp@latest
+npx -y @aaronalm19/roblox-mcp@latest
 ```
 
 See `docs/CLIENTS.md` for full client examples.
@@ -121,7 +121,7 @@ npm run place:list
    - watch: `npm run blueprint:watch`
 6. Reverse sync (guarded): `npm run blueprint:reverse-sync`
 
-## 11) Luau lint integration
+## 10) Luau lint integration
 
 Install official Luau CLI:
 
@@ -141,7 +141,7 @@ Strict lint (fails on findings):
 npm run luau:lint:strict
 ```
 
-## 10) Troubleshooting
+## 11) Troubleshooting
 
 If MCP says enabled but has no tools:
 

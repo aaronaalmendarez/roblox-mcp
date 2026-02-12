@@ -74,7 +74,7 @@ Package fallback:
 ```toml
 [mcp_servers.robloxstudio]
 command = "npx"
-args = ["-y", "robloxstudio-mcp@latest"]
+args = ["-y", "@aaronalm19/roblox-mcp@latest"]
 ```
 
 For other clients, follow `docs/CLIENTS.md`.

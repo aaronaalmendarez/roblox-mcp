@@ -59,7 +59,7 @@ An [MCP](https://modelcontextprotocol.io/) server that connects AI assistants di
 
 ## 🚀 Quick Start
 
-**1 →** Install the Studio plugin ([download `.rbxmx`](https://github.com/boshyxd/robloxstudio-mcp/releases/latest/download/MCPPlugin.rbxmx)) into your plugins folder
+**1 →** Install the Studio plugin ([download `.rbxmx`](https://github.com/aaronaalmendarez/roblox-mcp/releases/latest/download/MCPPlugin.rbxmx)) into your plugins folder
 
 | OS      | Path                             |
 | :------ | :------------------------------- |
