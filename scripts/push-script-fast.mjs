@@ -6,7 +6,7 @@ import process from 'node:process';
 import { gzipSync } from 'node:zlib';
 import { normalizeLuaQuotedNewlines, stripUtf8Bom } from './lib/text-utils.mjs';
 
-const BASE = (process.env.ROBLOX_MCP_URL || 'http://localhost:3002').replace(/\/$/, '');
+const BASE = (process.env.ROBLOX_MCP_URL || 'http://localhost:58741').replace(/\/$/, '');
 
 function parseArgs(argv) {
   const args = {
