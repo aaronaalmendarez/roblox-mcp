@@ -12,13 +12,13 @@ interface PendingRequest {
 
 export class BridgeService {
   private pendingRequests: Map<string, PendingRequest> = new Map();
-  private requestTimeout = 30000; // 30 seconds timeout
+  private requestTimeout = 30000;
 
   async sendRequest(endpoint: string, data: any): Promise<any> {
     const requestId = uuidv4();
 
     return new Promise((resolve, reject) => {
-      // Set timeout and store the ID so we can clear it later
+
       const timeoutId = setTimeout(() => {
         if (this.pendingRequests.has(requestId)) {
           this.pendingRequests.delete(requestId);
@@ -41,9 +41,9 @@ export class BridgeService {
   }
 
   getPendingRequest(): { requestId: string; request: { endpoint: string; data: any } } | null {
-    // Get oldest pending request
+
     let oldestRequest: PendingRequest | null = null;
-    
+
     for (const request of this.pendingRequests.values()) {
       if (!oldestRequest || request.timestamp < oldestRequest.timestamp) {
         oldestRequest = request;
@@ -81,7 +81,6 @@ export class BridgeService {
     }
   }
 
-  // Clean up old requests
   cleanupOldRequests() {
     const now = Date.now();
     for (const [id, request] of this.pendingRequests.entries()) {
@@ -93,7 +92,6 @@ export class BridgeService {
     }
   }
 
-  // Force cleanup all pending requests (used on disconnect)
   clearAllPendingRequests() {
     for (const [, request] of this.pendingRequests.entries()) {
       clearTimeout(request.timeoutId);

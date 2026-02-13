@@ -56,6 +56,6 @@ temp/
 banner-prompt.txt
 forum-title.txt
 
-# Lune runtime (downloaded for E2E tests)
+# Binaries
 lune.exe
 lune.zip

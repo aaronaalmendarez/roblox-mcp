@@ -8,7 +8,7 @@ export class RobloxStudioTools {
     this.client = new StudioHttpClient(bridge);
   }
 
-  // File System Tools
+
   async getFileTree(path: string = '') {
     const response = await this.client.request('/api/file-tree', { path });
     return {
@@ -33,7 +33,7 @@ export class RobloxStudioTools {
     };
   }
 
-  // Studio Context Tools
+
   async getPlaceInfo() {
     const response = await this.client.request('/api/place-info', {});
     return {
@@ -59,10 +59,10 @@ export class RobloxStudioTools {
   }
 
   async searchObjects(query: string, searchType: string = 'name', propertyName?: string) {
-    const response = await this.client.request('/api/search-objects', { 
-      query, 
-      searchType, 
-      propertyName 
+    const response = await this.client.request('/api/search-objects', {
+      query,
+      searchType,
+      propertyName
     });
     return {
       content: [
@@ -74,7 +74,7 @@ export class RobloxStudioTools {
     };
   }
 
-  // Property & Instance Tools
+
   async getInstanceProperties(instancePath: string) {
     if (!instancePath) {
       throw new Error('Instance path is required for get_instance_properties');
@@ -109,9 +109,9 @@ export class RobloxStudioTools {
     if (!propertyName || !propertyValue) {
       throw new Error('Property name and value are required for search_by_property');
     }
-    const response = await this.client.request('/api/search-by-property', { 
-      propertyName, 
-      propertyValue 
+    const response = await this.client.request('/api/search-by-property', {
+      propertyName,
+      propertyValue
     });
     return {
       content: [
@@ -138,12 +138,12 @@ export class RobloxStudioTools {
     };
   }
 
-  // Project Tools
+
   async getProjectStructure(path?: string, maxDepth?: number, scriptsOnly?: boolean) {
-    const response = await this.client.request('/api/project-structure', { 
-      path, 
-      maxDepth, 
-      scriptsOnly 
+    const response = await this.client.request('/api/project-structure', {
+      path,
+      maxDepth,
+      scriptsOnly
     });
     return {
       content: [
@@ -156,15 +156,15 @@ export class RobloxStudioTools {
   }
 
 
-  // Property Modification Tools
+
   async setProperty(instancePath: string, propertyName: string, propertyValue: any) {
     if (!instancePath || !propertyName) {
       throw new Error('Instance path and property name are required for set_property');
     }
-    const response = await this.client.request('/api/set-property', { 
-      instancePath, 
-      propertyName, 
-      propertyValue 
+    const response = await this.client.request('/api/set-property', {
+      instancePath,
+      propertyName,
+      propertyValue
     });
     return {
       content: [
@@ -180,10 +180,10 @@ export class RobloxStudioTools {
     if (!paths || paths.length === 0 || !propertyName) {
       throw new Error('Paths array and property name are required for mass_set_property');
     }
-    const response = await this.client.request('/api/mass-set-property', { 
-      paths, 
-      propertyName, 
-      propertyValue 
+    const response = await this.client.request('/api/mass-set-property', {
+      paths,
+      propertyName,
+      propertyValue
     });
     return {
       content: [
@@ -199,8 +199,8 @@ export class RobloxStudioTools {
     if (!paths || paths.length === 0 || !propertyName) {
       throw new Error('Paths array and property name are required for mass_get_property');
     }
-    const response = await this.client.request('/api/mass-get-property', { 
-      paths, 
+    const response = await this.client.request('/api/mass-get-property', {
+      paths,
       propertyName
     });
     return {
@@ -213,14 +213,14 @@ export class RobloxStudioTools {
     };
   }
 
-  // Object Creation Tools
+
   async createObject(className: string, parent: string, name?: string) {
     if (!className || !parent) {
       throw new Error('Class name and parent are required for create_object');
     }
-    const response = await this.client.request('/api/create-object', { 
-      className, 
-      parent, 
+    const response = await this.client.request('/api/create-object', {
+      className,
+      parent,
       name
     });
     return {
@@ -237,11 +237,11 @@ export class RobloxStudioTools {
     if (!className || !parent) {
       throw new Error('Class name and parent are required for create_object_with_properties');
     }
-    const response = await this.client.request('/api/create-object', { 
-      className, 
-      parent, 
-      name, 
-      properties 
+    const response = await this.client.request('/api/create-object', {
+      className,
+      parent,
+      name,
+      properties
     });
     return {
       content: [
@@ -298,26 +298,26 @@ export class RobloxStudioTools {
     };
   }
 
-  // Smart Duplication Tools
+
   async smartDuplicate(
-    instancePath: string, 
-    count: number, 
+    instancePath: string,
+    count: number,
     options?: {
-      namePattern?: string; // e.g., "Button{n}" where {n} is replaced with index
-      positionOffset?: [number, number, number]; // X, Y, Z offset per duplicate
-      rotationOffset?: [number, number, number]; // X, Y, Z rotation offset per duplicate
-      scaleOffset?: [number, number, number]; // X, Y, Z scale multiplier per duplicate
-      propertyVariations?: Record<string, any[]>; // Property name to array of values
-      targetParents?: string[]; // Different parent for each duplicate
+      namePattern?: string;
+      positionOffset?: [number, number, number];
+      rotationOffset?: [number, number, number];
+      scaleOffset?: [number, number, number];
+      propertyVariations?: Record<string, any[]>;
+      targetParents?: string[];
     }
   ) {
     if (!instancePath || count < 1) {
       throw new Error('Instance path and count > 0 are required for smart_duplicate');
     }
-    const response = await this.client.request('/api/smart-duplicate', { 
-      instancePath, 
-      count, 
-      options 
+    const response = await this.client.request('/api/smart-duplicate', {
+      instancePath,
+      count,
+      options
     });
     return {
       content: [
@@ -357,19 +357,19 @@ export class RobloxStudioTools {
     };
   }
 
-  // Calculated Property Tools
+
   async setCalculatedProperty(
-    paths: string[], 
-    propertyName: string, 
+    paths: string[],
+    propertyName: string,
     formula: string,
     variables?: Record<string, any>
   ) {
     if (!paths || paths.length === 0 || !propertyName || !formula) {
       throw new Error('Paths, property name, and formula are required for set_calculated_property');
     }
-    const response = await this.client.request('/api/set-calculated-property', { 
-      paths, 
-      propertyName, 
+    const response = await this.client.request('/api/set-calculated-property', {
+      paths,
+      propertyName,
       formula,
       variables
     });
@@ -383,20 +383,20 @@ export class RobloxStudioTools {
     };
   }
 
-  // Relative Property Tools
+
   async setRelativeProperty(
-    paths: string[], 
-    propertyName: string, 
+    paths: string[],
+    propertyName: string,
     operation: 'add' | 'multiply' | 'divide' | 'subtract' | 'power',
     value: any,
-    component?: 'X' | 'Y' | 'Z' | 'XScale' | 'XOffset' | 'YScale' | 'YOffset' // Vector3: X,Y,Z; UDim2: XScale, XOffset, YScale, YOffset
+    component?: 'X' | 'Y' | 'Z' | 'XScale' | 'XOffset' | 'YScale' | 'YOffset'
   ) {
     if (!paths || paths.length === 0 || !propertyName || !operation || value === undefined) {
       throw new Error('Paths, property name, operation, and value are required for set_relative_property');
     }
-    const response = await this.client.request('/api/set-relative-property', { 
-      paths, 
-      propertyName, 
+    const response = await this.client.request('/api/set-relative-property', {
+      paths,
+      propertyName,
       operation,
       value,
       component
@@ -411,7 +411,7 @@ export class RobloxStudioTools {
     };
   }
 
-  // Script Management Tools
+
   async getScriptSource(instancePath: string, startLine?: number, endLine?: number) {
     if (!instancePath) {
       throw new Error('Instance path is required for get_script_source');
@@ -442,7 +442,7 @@ export class RobloxStudioTools {
     };
   }
 
-  // Partial Script Editing Tools
+
   async editScriptLines(instancePath: string, startLine: number, endLine: number, newContent: string) {
     if (!instancePath || !startLine || !endLine || typeof newContent !== 'string') {
       throw new Error('Instance path, startLine, endLine, and newContent are required for edit_script_lines');
@@ -488,7 +488,7 @@ export class RobloxStudioTools {
     };
   }
 
-  // Attribute Tools
+
   async getAttribute(instancePath: string, attributeName: string) {
     if (!instancePath || !attributeName) {
       throw new Error('Instance path and attribute name are required for get_attribute');
@@ -549,7 +549,7 @@ export class RobloxStudioTools {
     };
   }
 
-  // Tag Tools (CollectionService)
+
   async getTags(instancePath: string) {
     if (!instancePath) {
       throw new Error('Instance path is required for get_tags');
@@ -612,6 +612,60 @@ export class RobloxStudioTools {
 
   async getSelection() {
     const response = await this.client.request('/api/get-selection', {});
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }
+      ]
+    };
+  }
+
+  async executeLuau(code: string) {
+    if (!code) {
+      throw new Error('Code is required for execute_luau');
+    }
+    const response = await this.client.request('/api/execute-luau', { code });
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }
+      ]
+    };
+  }
+
+  async startPlaytest(mode: string) {
+    if (mode !== 'play' && mode !== 'run') {
+      throw new Error('mode must be "play" or "run"');
+    }
+    const response = await this.client.request('/api/start-playtest', { mode });
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }
+      ]
+    };
+  }
+
+  async stopPlaytest() {
+    const response = await this.client.request('/api/stop-playtest', {});
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }
+      ]
+    };
+  }
+
+  async getPlaytestOutput() {
+    const response = await this.client.request('/api/get-playtest-output', {});
     return {
       content: [
         {

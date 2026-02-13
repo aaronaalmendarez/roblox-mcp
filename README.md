@@ -13,23 +13,28 @@ An MCP server that lets AI explore your game structure, read/edit scripts, and p
 ## Setup
 
 1. Install the [Studio plugin](https://github.com/boshyxd/robloxstudio-mcp/releases) to your Plugins folder
-2. Enable **Allow HTTP Requests** in Game Settings > Security
+2. Enable **Allow HTTP Requests** in Experience Settings > Security
 3. Connect your AI:
-
-**Gemini:**
-```bash
-gemini mcp add robloxstudio npx --trust -- -y robloxstudio-mcp
-```
 
 **Claude:**
 ```bash
-claude mcp add robloxstudio -- npx robloxstudio-mcp
+claude mcp add robloxstudio -- npx -y robloxstudio-mcp@latest
+```
+
+**Codex:**
+```bash
+codex mcp add robloxstudio -- npx -y robloxstudio-mcp@latest
+```
+
+**Gemini:**
+```bash
+gemini mcp add robloxstudio npx --trust -- -y robloxstudio-mcp@latest
 ```
 
 Plugin shows "Connected" when ready.
 
 <details>
-<summary>Other MCP clients (Claude Desktop, etc.)</summary>
+<summary>Other MCP clients (Claude Desktop, Cursor, etc.)</summary>
 
 ```json
 {

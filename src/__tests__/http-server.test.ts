@@ -16,7 +16,7 @@ describe('HTTP Server', () => {
   });
 
   afterEach(() => {
-    // Clean up any pending requests to prevent open handles
+
     bridge.clearAllPendingRequests();
   });
 
@@ -46,11 +46,10 @@ describe('HTTP Server', () => {
     });
 
     test('should handle plugin disconnect', async () => {
-      // First connect
+
       await request(app).post('/ready').expect(200);
       expect(app.isPluginConnected()).toBe(true);
 
-      // Then disconnect
       const response = await request(app)
         .post('/disconnect')
         .expect(200);
@@ -60,8 +59,7 @@ describe('HTTP Server', () => {
     });
 
     test('should clear pending requests on disconnect', async () => {
-      // Add some pending requests
-      // Attach catch handlers to prevent unhandled rejection warnings
+
       const p1 = bridge.sendRequest('/api/test1', {});
       const p2 = bridge.sendRequest('/api/test2', {});
       p1.catch(() => {});
@@ -69,26 +67,21 @@ describe('HTTP Server', () => {
 
       expect(bridge.getPendingRequest()).toBeTruthy();
 
-      // Disconnect
       await request(app).post('/disconnect').expect(200);
 
-      // All requests should be cleared
       expect(bridge.getPendingRequest()).toBeNull();
     });
 
     test('should timeout plugin connection after inactivity', async () => {
-      // Connect plugin
+
       await request(app).post('/ready').expect(200);
       expect(app.isPluginConnected()).toBe(true);
 
-      // Simulate time passing (11 seconds of inactivity)
       const originalDateNow = Date.now;
       Date.now = jest.fn(() => originalDateNow() + 11000);
 
-      // Plugin should be considered disconnected
       expect(app.isPluginConnected()).toBe(false);
 
-      // Restore Date.now
       Date.now = originalDateNow;
     });
   });
@@ -108,11 +101,9 @@ describe('HTTP Server', () => {
     });
 
     test('should return pending request when MCP is active', async () => {
-      // Activate MCP server
+
       app.setMCPServerActive(true);
 
-      // Add a pending request
-      // Attach catch handler to prevent unhandled rejection during cleanup
       const pendingRequest = bridge.sendRequest('/api/test', { data: 'test' });
       pendingRequest.catch(() => {});
 
@@ -132,7 +123,7 @@ describe('HTTP Server', () => {
     });
 
     test('should return null request when no pending requests', async () => {
-      // Activate MCP server
+
       app.setMCPServerActive(true);
 
       const response = await request(app)
@@ -160,11 +151,9 @@ describe('HTTP Server', () => {
       const requestId = 'test-request-id';
       const responseData = { result: 'success' };
 
-      // Create a pending request
       const requestPromise = bridge.sendRequest('/api/test', {});
       const pendingRequest = bridge.getPendingRequest();
 
-      // Send response
       const response = await request(app)
         .post('/response')
         .send({
@@ -175,7 +164,6 @@ describe('HTTP Server', () => {
 
       expect(response.body).toEqual({ success: true });
 
-      // Check that the request was resolved
       const result = await requestPromise;
       expect(result).toEqual(responseData);
     });
@@ -183,13 +171,10 @@ describe('HTTP Server', () => {
     test('should handle error response', async () => {
       const error = 'Test error message';
 
-      // Create a pending request
-      // Attach catch handler to prevent unhandled rejection warning
       const requestPromise = bridge.sendRequest('/api/test', {});
       requestPromise.catch(() => {});
       const pendingRequest = bridge.getPendingRequest();
 
-      // Send error response
       const response = await request(app)
         .post('/response')
         .send({
@@ -200,7 +185,6 @@ describe('HTTP Server', () => {
 
       expect(response.body).toEqual({ success: true });
 
-      // Check that the request was rejected
       await expect(requestPromise).rejects.toEqual(error);
     });
   });
@@ -210,10 +194,8 @@ describe('HTTP Server', () => {
       app.setMCPServerActive(true);
       expect(app.isMCPServerActive()).toBe(true);
 
-      // Simulate activity
       app.trackMCPActivity();
 
-      // Should still be active
       expect(app.isMCPServerActive()).toBe(true);
     });
 
@@ -221,21 +203,18 @@ describe('HTTP Server', () => {
       app.setMCPServerActive(true);
       expect(app.isMCPServerActive()).toBe(true);
 
-      // Simulate time passing (16 seconds of inactivity)
       const originalDateNow = Date.now;
       Date.now = jest.fn(() => originalDateNow() + 16000);
 
-      // MCP server should be considered inactive
       expect(app.isMCPServerActive()).toBe(false);
 
-      // Restore Date.now
       Date.now = originalDateNow;
     });
   });
 
   describe('Status Endpoint', () => {
     test('should return current status', async () => {
-      // Set up some state
+
       await request(app).post('/ready').expect(200);
       app.setMCPServerActive(true);
 

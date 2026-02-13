@@ -1,6 +1,6 @@
 {
   "name": "robloxstudio-mcp",
-  "version": "1.9.0",
+  "version": "2.3.0",
   "description": "MCP Server for Roblox Studio Integration - Access Studio data, scripts, and objects through AI tools",
   "main": "dist/index.js",
   "type": "module",
@@ -23,8 +23,6 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:e2e": "lune run tests/luau/e2e.luau",
-    "test:all": "npm test && npm run test:e2e",
     "prepublishOnly": "npm run build:all"
   },
   "keywords": [
