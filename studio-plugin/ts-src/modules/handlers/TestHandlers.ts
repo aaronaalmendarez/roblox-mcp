@@ -1,4 +1,4 @@
-import { LogService } from "@rbxts/services";
+import { HttpService, LogService } from "@rbxts/services";
 
 const StudioTestService = game.GetService("StudioTestService");
 const ServerScriptService = game.GetService("ServerScriptService");
@@ -24,7 +24,7 @@ local StudioTestService = game:GetService("StudioTestService")
 while true do
 	local ok, res = pcall(function()
 		return HttpService:RequestAsync({
-			Url = "http://localhost:${port}/playtest-stop-signal",
+			Url = "http://127.0.0.1:${port}/playtest-stop-signal",
 			Method = "GET",
 		})
 	end)
@@ -68,6 +68,9 @@ function startPlaytest(requestData: Record<string, unknown>) {
 	cleanupStopListener();
 
 	if (serverPort !== undefined && serverPort > 0) {
+		// HttpEnabled is typed readonly but writable from plugin context
+		(HttpService as unknown as { HttpEnabled: boolean }).HttpEnabled = true;
+
 		const listener = new Instance("Script");
 		listener.Name = STOP_LISTENER_NAME;
 		listener.Source = buildStopListenerSource(serverPort);
@@ -114,18 +117,10 @@ function stopPlaytest(_requestData: Record<string, unknown>) {
 		return { error: "No test is currently running" };
 	}
 
-	const output = [...outputBuffer];
-
-	if (logConnection) {
-		logConnection.Disconnect();
-		logConnection = undefined;
-	}
-	testRunning = false;
-
 	return {
 		success: true,
-		output,
-		outputCount: output.size(),
+		output: [...outputBuffer],
+		outputCount: outputBuffer.size(),
 		message: "Stop signal sent. The play session will end shortly.",
 	};
 }
