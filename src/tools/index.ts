@@ -1416,4 +1416,58 @@ export class RobloxStudioTools {
       ]
     };
   }
+
+  async executeLuau(code: string) {
+    if (!code) {
+      throw new Error('Code is required for execute_luau');
+    }
+    const response = await this.client.request('/api/execute-luau', { code });
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }
+      ]
+    };
+  }
+
+  async startPlaytest(mode: string) {
+    if (mode !== 'play' && mode !== 'run') {
+      throw new Error('mode must be "play" or "run"');
+    }
+    const response = await this.client.request('/api/start-playtest', { mode });
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }
+      ]
+    };
+  }
+
+  async stopPlaytest() {
+    const response = await this.client.request('/api/stop-playtest', {});
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }
+      ]
+    };
+  }
+
+  async getPlaytestOutput() {
+    const response = await this.client.request('/api/get-playtest-output', {});
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }
+      ]
+    };
+  }
 }

@@ -657,6 +657,15 @@ export function createHttpServer(tools: RobloxStudioTools, bridge: BridgeService
     }
   });
 
+  app.post('/mcp/execute_luau', async (req, res) => {
+    try {
+      const result = await tools.executeLuau(req.body.code);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
   app.post('/mcp/get_runtime_state', async (req, res) => {
     try {
       res.json({
@@ -962,6 +971,33 @@ export function createHttpServer(tools: RobloxStudioTools, bridge: BridgeService
   app.post('/mcp/get_tagged', async (req, res) => {
     try {
       const result = await tools.getTagged(req.body.tagName);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/start_playtest', async (req, res) => {
+    try {
+      const result = await tools.startPlaytest(req.body.mode);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/stop_playtest', async (req, res) => {
+    try {
+      const result = await tools.stopPlaytest();
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/get_playtest_output', async (req, res) => {
+    try {
+      const result = await tools.getPlaytestOutput();
       res.json(result);
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });

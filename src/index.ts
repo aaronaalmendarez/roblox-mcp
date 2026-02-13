@@ -24,9 +24,13 @@ import {
   ListToolsRequestSchema,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
+import { createRequire } from 'module';
 import { createHttpServer } from './http-server.js';
 import { RobloxStudioTools } from './tools/index.js';
 import { BridgeService } from './bridge-service.js';
+
+const require = createRequire(import.meta.url);
+const { version: VERSION } = require('../package.json');
 
 class RobloxStudioMCPServer {
   private server: Server;
@@ -37,7 +41,7 @@ class RobloxStudioMCPServer {
     this.server = new Server(
       {
         name: 'robloxstudio-mcp',
-        version: '1.10.0',
+        version: VERSION,
       },
       {
         capabilities: {
@@ -1161,6 +1165,51 @@ class RobloxStudioMCPServer {
                 }
               }
             }
+          },
+          {
+            name: 'execute_luau',
+            description: 'Execute arbitrary Luau code in Roblox Studio and return the result. The code runs in the plugin context with access to game, workspace, and all services.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                code: {
+                  type: 'string',
+                  description: 'Luau code to execute. Can use print() for output. The return value is captured.'
+                }
+              },
+              required: ['code']
+            }
+          },
+          {
+            name: 'start_playtest',
+            description: 'Start a play test session in Roblox Studio and begin capturing output.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                mode: {
+                  type: 'string',
+                  enum: ['play', 'run'],
+                  description: '"play" for Play Solo mode, "run" for Run mode'
+                }
+              },
+              required: ['mode']
+            }
+          },
+          {
+            name: 'stop_playtest',
+            description: 'Stop the running play test session and return captured output.',
+            inputSchema: {
+              type: 'object',
+              properties: {}
+            }
+          },
+          {
+            name: 'get_playtest_output',
+            description: 'Poll output from the currently running play test without stopping it.',
+            inputSchema: {
+              type: 'object',
+              properties: {}
+            }
           }
         ]
       };
@@ -1333,6 +1382,14 @@ class RobloxStudioMCPServer {
                 }
               ]
             };
+          case 'execute_luau':
+            return await this.tools.executeLuau((args as any)?.code as string);
+          case 'start_playtest':
+            return await this.tools.startPlaytest((args as any)?.mode as string);
+          case 'stop_playtest':
+            return await this.tools.stopPlaytest();
+          case 'get_playtest_output':
+            return await this.tools.getPlaytestOutput();
 
           default:
             throw new McpError(
@@ -1350,16 +1407,71 @@ class RobloxStudioMCPServer {
   }
 
   async run() {
-    const port = process.env.ROBLOX_STUDIO_PORT ? parseInt(process.env.ROBLOX_STUDIO_PORT) : 3002;
+    const basePort = process.env.ROBLOX_STUDIO_PORT ? parseInt(process.env.ROBLOX_STUDIO_PORT) : 58741;
+    const maxPort = basePort + 4;
     const host = process.env.ROBLOX_STUDIO_HOST || '0.0.0.0';
     const httpServer = createHttpServer(this.tools, this.bridge);
-    
-    await new Promise<void>((resolve) => {
-      httpServer.listen(port, host, () => {
-        console.error(`HTTP server listening on ${host}:${port} for Studio plugin`);
-        resolve();
-      });
-    });
+
+    let boundPort = 0;
+    for (let port = basePort; port <= maxPort; port++) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const onError = (err: NodeJS.ErrnoException) => {
+            if (err.code === 'EADDRINUSE') {
+              httpServer.removeListener('error', onError);
+              reject(err);
+            } else {
+              reject(err);
+            }
+          };
+          httpServer.once('error', onError);
+          httpServer.listen(port, host, () => {
+            httpServer.removeListener('error', onError);
+            boundPort = port;
+            console.error(`HTTP server listening on ${host}:${port} for Studio plugin`);
+            resolve();
+          });
+        });
+        break;
+      } catch (err: any) {
+        if (err.code === 'EADDRINUSE') {
+          console.error(`Port ${port} in use, trying next...`);
+          if (port === maxPort) {
+            throw new Error(`All ports ${basePort}-${maxPort} are in use. Stop some MCP server instances and retry.`);
+          }
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    const LEGACY_PORT = 3002;
+    let legacyServer: ReturnType<typeof createHttpServer> | undefined;
+    if (boundPort !== LEGACY_PORT) {
+      const legacy = createHttpServer(this.tools, this.bridge);
+      legacyServer = legacy;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const onError = (err: NodeJS.ErrnoException) => {
+            if (err.code === 'EADDRINUSE') {
+              legacy.removeListener('error', onError);
+              reject(err);
+            } else {
+              reject(err);
+            }
+          };
+          legacy.once('error', onError);
+          legacy.listen(LEGACY_PORT, host, () => {
+            legacy.removeListener('error', onError);
+            console.error(`Legacy HTTP server also listening on ${host}:${LEGACY_PORT} for old plugins`);
+            resolve();
+          });
+        });
+        (legacy as any).setMCPServerActive(true);
+      } catch {
+        console.error(`Legacy port ${LEGACY_PORT} in use, skipping backward-compat listener`);
+      }
+    }
 
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
@@ -1371,6 +1483,8 @@ class RobloxStudioMCPServer {
     console.error('Waiting for Studio plugin to connect...');
     
     setInterval(() => {
+      (httpServer as any).trackMCPActivity();
+      if (legacyServer) (legacyServer as any).trackMCPActivity();
       const pluginConnected = (httpServer as any).isPluginConnected();
       const mcpActive = (httpServer as any).isMCPServerActive();
       

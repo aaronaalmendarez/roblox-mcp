@@ -1,0 +1,544 @@
+import Utils from "../Utils";
+
+const { getInstancePath, getInstanceByPath, readScriptSource } = Utils;
+
+interface TreeNode {
+	name: string;
+	className: string;
+	path?: string;
+	children: TreeNode[];
+	hasSource?: boolean;
+	scriptType?: string;
+}
+
+function getFileTree(requestData: Record<string, unknown>) {
+	const path = (requestData.path as string) ?? "";
+	const startInstance = getInstanceByPath(path);
+
+	if (!startInstance) {
+		return { error: `Path not found: ${path}` };
+	}
+
+	function buildTree(instance: Instance, depth: number): TreeNode {
+		if (depth > 10) {
+			return { name: instance.Name, className: instance.ClassName, children: [] };
+		}
+
+		const node: TreeNode = {
+			name: instance.Name,
+			className: instance.ClassName,
+			path: getInstancePath(instance),
+			children: [],
+		};
+
+		if (instance.IsA("LuaSourceContainer")) {
+			node.hasSource = true;
+			node.scriptType = instance.ClassName;
+		}
+
+		for (const child of instance.GetChildren()) {
+			node.children.push(buildTree(child, depth + 1));
+		}
+
+		return node;
+	}
+
+	return {
+		tree: buildTree(startInstance, 0),
+		timestamp: tick(),
+	};
+}
+
+function searchFiles(requestData: Record<string, unknown>) {
+	const query = requestData.query as string;
+	const searchType = (requestData.searchType as string) ?? "name";
+
+	if (!query) return { error: "Query is required" };
+
+	const results: { name: string; className: string; path: string; hasSource: boolean }[] = [];
+
+	function searchRecursive(instance: Instance) {
+		let match = false;
+
+		if (searchType === "name") {
+			match = instance.Name.lower().find(query.lower())[0] !== undefined;
+		} else if (searchType === "type") {
+			match = instance.ClassName.lower().find(query.lower())[0] !== undefined;
+		} else if (searchType === "content" && instance.IsA("LuaSourceContainer")) {
+			match = readScriptSource(instance).lower().find(query.lower())[0] !== undefined;
+		}
+
+		if (match) {
+			results.push({
+				name: instance.Name,
+				className: instance.ClassName,
+				path: getInstancePath(instance),
+				hasSource: instance.IsA("LuaSourceContainer"),
+			});
+		}
+
+		for (const child of instance.GetChildren()) {
+			searchRecursive(child);
+		}
+	}
+
+	searchRecursive(game);
+
+	return { results, query, searchType, count: results.size() };
+}
+
+function getPlaceInfo(_requestData: Record<string, unknown>) {
+	return {
+		placeName: game.Name,
+		placeId: game.PlaceId,
+		gameId: game.GameId,
+		jobId: game.JobId,
+		workspace: {
+			name: game.Workspace.Name,
+			className: game.Workspace.ClassName,
+		},
+	};
+}
+
+function getServices(requestData: Record<string, unknown>) {
+	const serviceName = requestData.serviceName as string | undefined;
+
+	if (serviceName) {
+		const [ok, service] = pcall(() => game.GetService(serviceName as keyof Services));
+		if (ok && service) {
+			return {
+				service: {
+					name: service.Name,
+					className: service.ClassName,
+					path: getInstancePath(service as Instance),
+					childCount: (service as Instance).GetChildren().size(),
+				},
+			};
+		} else {
+			return { error: `Service not found: ${serviceName}` };
+		}
+	} else {
+		const services: { name: string; className: string; path: string; childCount: number }[] = [];
+		const commonServices = [
+			"Workspace", "Players", "StarterGui", "StarterPack", "StarterPlayer",
+			"ReplicatedStorage", "ServerStorage", "ServerScriptService",
+			"HttpService", "TeleportService", "DataStoreService",
+		];
+
+		for (const svcName of commonServices) {
+			const [ok, service] = pcall(() => game.GetService(svcName as keyof Services));
+			if (ok && service) {
+				services.push({
+					name: service.Name,
+					className: service.ClassName,
+					path: getInstancePath(service as Instance),
+					childCount: (service as Instance).GetChildren().size(),
+				});
+			}
+		}
+
+		return { services };
+	}
+}
+
+function searchObjects(requestData: Record<string, unknown>) {
+	const query = requestData.query as string;
+	const searchType = (requestData.searchType as string) ?? "name";
+	const propertyName = requestData.propertyName as string | undefined;
+
+	if (!query) return { error: "Query is required" };
+
+	const results: { name: string; className: string; path: string }[] = [];
+
+	function searchRecursive(instance: Instance) {
+		let match = false;
+
+		if (searchType === "name") {
+			match = instance.Name.lower().find(query.lower())[0] !== undefined;
+		} else if (searchType === "class") {
+			match = instance.ClassName.lower().find(query.lower())[0] !== undefined;
+		} else if (searchType === "property" && propertyName) {
+			const [success, value] = pcall(() => tostring((instance as unknown as Record<string, unknown>)[propertyName]));
+			if (success) {
+				match = (value as string).lower().find(query.lower())[0] !== undefined;
+			}
+		}
+
+		if (match) {
+			results.push({
+				name: instance.Name,
+				className: instance.ClassName,
+				path: getInstancePath(instance),
+			});
+		}
+
+		for (const child of instance.GetChildren()) {
+			searchRecursive(child);
+		}
+	}
+
+	searchRecursive(game);
+
+	return { results, query, searchType, count: results.size() };
+}
+
+function getInstanceProperties(requestData: Record<string, unknown>) {
+	const instancePath = requestData.instancePath as string;
+	if (!instancePath) return { error: "Instance path is required" };
+
+	const instance = getInstanceByPath(instancePath);
+	if (!instance) return { error: `Instance not found: ${instancePath}` };
+
+	const properties: Record<string, unknown> = {};
+	const [success, result] = pcall(() => {
+		const basicProps = ["Name", "ClassName", "Parent"];
+		for (const prop of basicProps) {
+			const [propSuccess, propValue] = pcall(() => {
+				const val = (instance as unknown as Record<string, unknown>)[prop];
+				if (prop === "Parent" && val) return getInstancePath(val as Instance);
+				if (val === undefined) return "nil";
+				return tostring(val);
+			});
+			if (propSuccess) properties[prop] = propValue;
+		}
+
+		const commonProps = [
+			"Size", "Position", "Rotation", "CFrame", "Anchored", "CanCollide",
+			"Transparency", "BrickColor", "Material", "Color", "Text", "TextColor3",
+			"BackgroundColor3", "Image", "ImageColor3", "Visible", "Active", "ZIndex",
+			"BorderSizePixel", "BackgroundTransparency", "ImageTransparency",
+			"TextTransparency", "Value", "Enabled", "Brightness", "Range", "Shadows",
+			"Face", "SurfaceType",
+		];
+
+		for (const prop of commonProps) {
+			const [propSuccess, propValue] = pcall(() => {
+				const val = (instance as unknown as Record<string, unknown>)[prop];
+				if (typeOf(val) === "UDim2") {
+					const udim = val as UDim2;
+					return {
+						X: { Scale: udim.X.Scale, Offset: udim.X.Offset },
+						Y: { Scale: udim.Y.Scale, Offset: udim.Y.Offset },
+						_type: "UDim2",
+					};
+				}
+				return tostring(val);
+			});
+			if (propSuccess) properties[prop] = propValue;
+		}
+
+		if (instance.IsA("LuaSourceContainer")) {
+			properties.Source = readScriptSource(instance);
+			if (instance.IsA("BaseScript")) {
+				properties.Enabled = tostring(instance.Enabled);
+			}
+		}
+
+		if (instance.IsA("Part")) {
+			properties.Shape = tostring(instance.Shape);
+		}
+
+		if (instance.IsA("BasePart")) {
+			properties.TopSurface = tostring(instance.TopSurface);
+			properties.BottomSurface = tostring(instance.BottomSurface);
+		}
+
+		if (instance.IsA("MeshPart")) {
+			properties.MeshId = tostring(instance.MeshId);
+			properties.TextureID = tostring(instance.TextureID);
+		}
+
+		if (instance.IsA("SpecialMesh")) {
+			properties.MeshId = tostring(instance.MeshId);
+			properties.TextureId = tostring(instance.TextureId);
+			properties.MeshType = tostring(instance.MeshType);
+		}
+
+		if (instance.IsA("Sound")) {
+			properties.SoundId = tostring(instance.SoundId);
+			properties.TimeLength = tostring(instance.TimeLength);
+			properties.IsPlaying = tostring(instance.IsPlaying);
+		}
+
+		if (instance.IsA("Animation")) {
+			properties.AnimationId = tostring(instance.AnimationId);
+		}
+
+		if (instance.IsA("Decal") || instance.IsA("Texture")) {
+			properties.Texture = tostring((instance as Decal | Texture).Texture);
+		}
+
+		if (instance.IsA("Shirt")) {
+			properties.ShirtTemplate = tostring(instance.ShirtTemplate);
+		} else if (instance.IsA("Pants")) {
+			properties.PantsTemplate = tostring(instance.PantsTemplate);
+		} else if (instance.IsA("ShirtGraphic")) {
+			properties.Graphic = tostring(instance.Graphic);
+		}
+
+		properties.ChildCount = tostring(instance.GetChildren().size());
+	});
+
+	if (success) {
+		return { instancePath, className: instance.ClassName, properties };
+	} else {
+		return { error: `Failed to get properties: ${result}` };
+	}
+}
+
+function getInstanceChildren(requestData: Record<string, unknown>) {
+	const instancePath = requestData.instancePath as string;
+	if (!instancePath) return { error: "Instance path is required" };
+
+	const instance = getInstanceByPath(instancePath);
+	if (!instance) return { error: `Instance not found: ${instancePath}` };
+
+	const children: { name: string; className: string; path: string; hasChildren: boolean; hasSource: boolean }[] = [];
+	for (const child of instance.GetChildren()) {
+		children.push({
+			name: child.Name,
+			className: child.ClassName,
+			path: getInstancePath(child),
+			hasChildren: child.GetChildren().size() > 0,
+			hasSource: child.IsA("LuaSourceContainer"),
+		});
+	}
+
+	return { instancePath, children, count: children.size() };
+}
+
+function searchByProperty(requestData: Record<string, unknown>) {
+	const propertyName = requestData.propertyName as string;
+	const propertyValue = requestData.propertyValue as string;
+
+	if (!propertyName || !propertyValue) {
+		return { error: "Property name and value are required" };
+	}
+
+	const results: { name: string; className: string; path: string; propertyValue: string }[] = [];
+
+	function searchRecursive(instance: Instance) {
+		const [success, value] = pcall(() => tostring((instance as unknown as Record<string, unknown>)[propertyName]));
+		if (success && (value as string).lower().find(propertyValue.lower())[0] !== undefined) {
+			results.push({
+				name: instance.Name,
+				className: instance.ClassName,
+				path: getInstancePath(instance),
+				propertyValue: value as string,
+			});
+		}
+		for (const child of instance.GetChildren()) {
+			searchRecursive(child);
+		}
+	}
+
+	searchRecursive(game);
+	return { propertyName, propertyValue, results, count: results.size() };
+}
+
+function getClassInfo(requestData: Record<string, unknown>) {
+	const className = requestData.className as string;
+	if (!className) return { error: "Class name is required" };
+
+	let [success, tempInstance] = pcall(() => new Instance(className as keyof CreatableInstances));
+	let isService = false;
+
+	if (!success) {
+		const [serviceSuccess, serviceInstance] = pcall(() =>
+			game.GetService(className as keyof Services),
+		);
+		if (serviceSuccess && serviceInstance) {
+			success = true;
+			tempInstance = serviceInstance as unknown as Instance;
+			isService = true;
+		}
+	}
+
+	if (!success) return { error: `Invalid class name: ${className}` };
+
+	const classInfo: {
+		className: string;
+		isService: boolean;
+		properties: string[];
+		methods: string[];
+		events: string[];
+	} = { className, isService, properties: [], methods: [], events: [] };
+
+	const commonProps = [
+		"Name", "ClassName", "Parent", "Size", "Position", "Rotation", "CFrame",
+		"Anchored", "CanCollide", "Transparency", "BrickColor", "Material", "Color",
+		"Text", "TextColor3", "BackgroundColor3", "Image", "ImageColor3", "Visible",
+		"Active", "ZIndex", "BorderSizePixel", "BackgroundTransparency",
+		"ImageTransparency", "TextTransparency", "Value", "Enabled", "Brightness",
+		"Range", "Shadows",
+	];
+
+	for (const prop of commonProps) {
+		const [propSuccess] = pcall(() => (tempInstance as unknown as Record<string, unknown>)[prop]);
+		if (propSuccess) classInfo.properties.push(prop);
+	}
+
+	const commonMethods = [
+		"Destroy", "Clone", "FindFirstChild", "FindFirstChildOfClass",
+		"GetChildren", "IsA", "IsAncestorOf", "IsDescendantOf", "WaitForChild",
+	];
+
+	for (const method of commonMethods) {
+		const [methodSuccess] = pcall(() => (tempInstance as unknown as Record<string, unknown>)[method]);
+		if (methodSuccess) classInfo.methods.push(method);
+	}
+
+	if (!isService) {
+		(tempInstance as Instance).Destroy();
+	}
+
+	return classInfo;
+}
+
+function getProjectStructure(requestData: Record<string, unknown>) {
+	const startPath = (requestData.path as string) ?? "";
+	const maxDepth = (requestData.maxDepth as number) ?? 3;
+	const showScriptsOnly = (requestData.scriptsOnly as boolean) ?? false;
+
+	if (startPath === "" || startPath === "game") {
+		const services: Record<string, unknown>[] = [];
+		const mainServices = [
+			"Workspace", "ServerScriptService", "ServerStorage", "ReplicatedStorage",
+			"StarterGui", "StarterPack", "StarterPlayer", "Players",
+		];
+
+		for (const serviceName of mainServices) {
+			const [svcOk, service] = pcall(() => game.GetService(serviceName as keyof Services));
+			if (svcOk && service) {
+				services.push({
+					name: service.Name,
+					className: service.ClassName,
+					path: getInstancePath(service as Instance),
+					childCount: (service as Instance).GetChildren().size(),
+					hasChildren: (service as Instance).GetChildren().size() > 0,
+				});
+			}
+		}
+
+		return {
+			type: "service_overview",
+			services,
+			timestamp: tick(),
+			note: "Use path parameter to explore specific locations (e.g., 'game.ServerScriptService')",
+		};
+	}
+
+	const startInstance = getInstanceByPath(startPath);
+	if (!startInstance) return { error: `Path not found: ${startPath}` };
+
+	function getStructure(instance: Instance, depth: number): Record<string, unknown> {
+		if (depth > maxDepth) {
+			return {
+				name: instance.Name,
+				className: instance.ClassName,
+				path: getInstancePath(instance),
+				childCount: instance.GetChildren().size(),
+				hasMore: true,
+				note: "Max depth reached - use this path to explore further",
+			};
+		}
+
+		const node: Record<string, unknown> = {
+			name: instance.Name,
+			className: instance.ClassName,
+			path: getInstancePath(instance),
+			children: [] as Record<string, unknown>[],
+		};
+
+		if (instance.IsA("LuaSourceContainer")) {
+			node.hasSource = true;
+			node.scriptType = instance.ClassName;
+			if (instance.IsA("BaseScript")) {
+				node.enabled = instance.Enabled;
+			}
+		}
+
+		if (instance.IsA("GuiObject")) {
+			node.visible = instance.Visible;
+			if (instance.IsA("Frame") || instance.IsA("ScreenGui")) {
+				node.guiType = "container";
+			} else if (instance.IsA("TextLabel") || instance.IsA("TextButton")) {
+				node.guiType = "text";
+				const textInst = instance as TextLabel | TextButton;
+				if (textInst.Text !== "") node.text = textInst.Text;
+			} else if (instance.IsA("ImageLabel") || instance.IsA("ImageButton")) {
+				node.guiType = "image";
+			}
+		}
+
+		let children = instance.GetChildren();
+		if (showScriptsOnly) {
+			children = children.filter(
+				(child) => child.IsA("BaseScript") || child.IsA("Folder") || child.IsA("ModuleScript"),
+			);
+		}
+
+		const nodeChildren = node.children as Record<string, unknown>[];
+		const childCount = children.size();
+		if (childCount > 20 && depth < maxDepth) {
+			const classGroups = new Map<string, Instance[]>();
+			for (const child of children) {
+				const cn = child.ClassName;
+				if (!classGroups.has(cn)) classGroups.set(cn, []);
+				classGroups.get(cn)!.push(child);
+			}
+
+			const childSummary: Record<string, unknown>[] = [];
+			classGroups.forEach((classChildren, cn) => {
+				childSummary.push({
+					className: cn,
+					count: classChildren.size(),
+					examples: [classChildren[0]?.Name, classChildren[1]?.Name],
+				});
+			});
+			node.childSummary = childSummary;
+
+			classGroups.forEach((classChildren, cn) => {
+				const limit = math.min(3, classChildren.size());
+				for (let i = 0; i < limit; i++) {
+					nodeChildren.push(getStructure(classChildren[i], depth + 1));
+				}
+				if (classChildren.size() > 3) {
+					nodeChildren.push({
+						name: `... ${classChildren.size() - 3} more ${cn} objects`,
+						className: "MoreIndicator",
+						path: `${getInstancePath(instance)} [${cn} children]`,
+						note: "Use specific path to explore these objects",
+					});
+				}
+			});
+		} else {
+			for (const child of children) {
+				nodeChildren.push(getStructure(child, depth + 1));
+			}
+		}
+
+		return node;
+	}
+
+	const result = getStructure(startInstance, 0);
+	result.requestedPath = startPath;
+	result.maxDepth = maxDepth;
+	result.scriptsOnly = showScriptsOnly;
+	result.timestamp = tick();
+
+	return result;
+}
+
+export = {
+	getFileTree,
+	searchFiles,
+	getPlaceInfo,
+	getServices,
+	searchObjects,
+	getInstanceProperties,
+	getInstanceChildren,
+	searchByProperty,
+	getClassInfo,
+	getProjectStructure,
+};

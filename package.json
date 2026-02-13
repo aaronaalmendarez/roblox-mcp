@@ -1,6 +1,6 @@
 {
   "name": "@aaronalm19/roblox-mcp",
-  "version": "1.10.0",
+  "version": "2.3.0",
   "description": "MCP Server for Roblox Studio Integration - Access Studio data, scripts, and objects through AI tools",
   "main": "dist/index.js",
   "type": "module",
