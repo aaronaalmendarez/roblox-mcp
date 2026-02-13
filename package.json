@@ -1,6 +1,6 @@
 {
   "name": "robloxstudio-mcp",
-  "version": "2.2.6",
+  "version": "2.2.7",
   "description": "MCP Server for Roblox Studio Integration - Access Studio data, scripts, and objects through AI tools",
   "main": "dist/index.js",
   "type": "module",
