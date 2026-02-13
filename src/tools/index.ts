@@ -637,11 +637,11 @@ export class RobloxStudioTools {
     };
   }
 
-  async startPlaytest(mode: string, serverPort?: number) {
+  async startPlaytest(mode: string) {
     if (mode !== 'play' && mode !== 'run') {
       throw new Error('mode must be "play" or "run"');
     }
-    const response = await this.client.request('/api/start-playtest', { mode, serverPort });
+    const response = await this.client.request('/api/start-playtest', { mode });
     return {
       content: [
         {

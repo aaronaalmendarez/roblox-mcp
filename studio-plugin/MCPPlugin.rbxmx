@@ -212,8 +212,16 @@ local function pollForRequests(connIndex)
 		end
 		if data.request and mcpConnected then
 			task.spawn(function()
-				local response = processRequest(data.request)
-				sendResponse(conn, data.requestId, response)
+				local ok, response = pcall(function()
+					return processRequest(data.request)
+				end)
+				if ok then
+					sendResponse(conn, data.requestId, response)
+				else
+					sendResponse(conn, data.requestId, {
+						error = tostring(response),
+					})
+				end
 			end)
 		end
 	elseif conn.isActive then
@@ -279,6 +287,29 @@ local function pollForRequests(connIndex)
 		end
 	end
 end
+local function discoverPort()
+	for offset = 0, 4 do
+		local port = State.BASE_PORT + offset
+		local success, result = pcall(function()
+			return HttpService:RequestAsync({
+				Url = `http://localhost:{port}/status`,
+				Method = "GET",
+				Headers = {
+					["Content-Type"] = "application/json",
+				},
+			})
+		end)
+		if success and result.Success then
+			local ok, data = pcall(function()
+				return HttpService:JSONDecode(result.Body)
+			end)
+			if ok and data.pluginConnected == false then
+				return port
+			end
+		end
+	end
+	return nil
+end
 local function activatePlugin(connIndex)
 	local _condition = connIndex
 	if _condition == nil then
@@ -290,6 +321,10 @@ local function activatePlugin(connIndex)
 		return nil
 	end
 	local ui = UI.getElements()
+	conn.isActive = true
+	conn.consecutiveFailures = 0
+	conn.currentRetryDelay = 0.5
+	ui.screenGui.Enabled = true
 	if idx == State.getActiveTabIndex() then
 		conn.serverUrl = ui.urlInput.Text
 		local portStr = string.match(conn.serverUrl, ":(%d+)$")
@@ -300,28 +335,9 @@ local function activatePlugin(connIndex)
 			end
 			conn.port = _condition_1
 		end
-	end
-	conn.isActive = true
-	conn.consecutiveFailures = 0
-	conn.currentRetryDelay = 0.5
-	ui.screenGui.Enabled = true
-	if idx == State.getActiveTabIndex() then
 		UI.updateUIState()
 	end
 	UI.updateTabDot(idx)
-	pcall(function()
-		HttpService:RequestAsync({
-			Url = `{conn.serverUrl}/ready`,
-			Method = "POST",
-			Headers = {
-				["Content-Type"] = "application/json",
-			},
-			Body = HttpService:JSONEncode({
-				pluginReady = true,
-				timestamp = tick(),
-			}),
-		})
-	end)
 	if not conn.heartbeatConnection then
 		conn.heartbeatConnection = RunService.Heartbeat:Connect(function()
 			local now = tick()
@@ -332,6 +348,29 @@ local function activatePlugin(connIndex)
 			end
 		end)
 	end
+	task.spawn(function()
+		local discoveredPort = discoverPort()
+		if discoveredPort ~= nil then
+			conn.port = discoveredPort
+			conn.serverUrl = `http://localhost:{discoveredPort}`
+			if idx == State.getActiveTabIndex() then
+				ui.urlInput.Text = conn.serverUrl
+			end
+		end
+		pcall(function()
+			HttpService:RequestAsync({
+				Url = `{conn.serverUrl}/ready`,
+				Method = "POST",
+				Headers = {
+					["Content-Type"] = "application/json",
+				},
+				Body = HttpService:JSONEncode({
+					pluginReady = true,
+					timestamp = tick(),
+				}),
+			})
+		end)
+	end)
 end
 local function deactivatePlugin(connIndex)
 	local _condition = connIndex
@@ -2986,15 +3025,80 @@ return {
             <string name="Name">TestHandlers</string>
             <string name="Source"><![CDATA[-- Compiled with roblox-ts v3.0.0
 local TS = require(script.Parent.Parent.Parent.include.RuntimeLib)
-local LogService = TS.import(script, script.Parent.Parent.Parent, "node_modules", "@rbxts", "services").LogService
+local _services = TS.import(script, script.Parent.Parent.Parent, "node_modules", "@rbxts", "services")
+local HttpService = _services.HttpService
+local LogService = _services.LogService
 local StudioTestService = game:GetService("StudioTestService")
+local ServerScriptService = game:GetService("ServerScriptService")
+local ScriptEditorService = game:GetService("ScriptEditorService")
+local STOP_LISTENER_NAME = "__MCP_StopListener"
 local testRunning = false
 local outputBuffer = {}
 local logConnection
 local testResult
 local testError
+local stopListenerScript
+local function buildStopListenerSource(port)
+	return `local HttpService = game:GetService("HttpService")\
+local StudioTestService = game:GetService("StudioTestService")\
+warn("[MCP] Stop listener started, polling port {port}")\
+while true do\
+	local ok, res = pcall(function()\
+		return HttpService:RequestAsync(\{\
+			Url = "http://127.0.0.1:{port}/playtest-stop-signal",\
+			Method = "GET",\
+		\})\
+	end)\
+	if not ok then\
+		warn("[MCP] HTTP failed: " .. tostring(res))\
+	elseif not res.Success then\
+		warn("[MCP] HTTP " .. tostring(res.StatusCode))\
+	else\
+		local dok, data = pcall(function()\
+			return HttpService:JSONDecode(res.Body)\
+		end)\
+		if dok and data.shouldStop then\
+			warn("[MCP] Stop signal received, calling EndTest")\
+			local eok, eerr = pcall(function() StudioTestService:EndTest("stopped_by_mcp") end)\
+			if not eok then\
+				warn("[MCP] EndTest failed: " .. tostring(eerr))\
+			end\
+			return\
+		end\
+	end\
+	task.wait(1)\
+end`
+end
+local function cleanupStopListener()
+	if stopListenerScript then
+		pcall(function()
+			return stopListenerScript:Destroy()
+		end)
+		stopListenerScript = nil
+	end
+end
+local function injectStopListener(serverPort)
+	-- HttpEnabled is typed readonly but writable from plugin context
+	HttpService.HttpEnabled = true
+	local listener = Instance.new("Script")
+	listener.Name = STOP_LISTENER_NAME
+	listener.Parent = ServerScriptService
+	local source = buildStopListenerSource(serverPort)
+	-- Try ScriptEditorService first (modern API), fall back to direct Source
+	local seOk = pcall(function()
+		ScriptEditorService:UpdateSourceAsync(listener, function()
+			return source
+		end)
+	end)
+	if not seOk then
+		listener.Source = source
+	end
+	stopListenerScript = listener
+	warn(`[MCP] Stop listener injected (port {serverPort})`)
+end
 local function startPlaytest(requestData)
 	local mode = requestData.mode
+	local serverPort = requestData.serverPort
 	if mode ~= "play" and mode ~= "run" then
 		return {
 			error = 'mode must be "play" or "run"',
@@ -3009,6 +3113,7 @@ local function startPlaytest(requestData)
 	outputBuffer = {}
 	testResult = nil
 	testError = nil
+	cleanupStopListener()
 	logConnection = LogService.MessageOut:Connect(function(message, messageType)
 		local _outputBuffer = outputBuffer
 		local _arg0 = {
@@ -3018,6 +3123,14 @@ local function startPlaytest(requestData)
 		}
 		table.insert(_outputBuffer, _arg0)
 	end)
+	if serverPort ~= nil and serverPort > 0 then
+		local injected, injErr = pcall(function()
+			return injectStopListener(serverPort)
+		end)
+		if not injected then
+			warn(`[MCP] Failed to inject stop listener: {injErr}`)
+		end
+	end
 	task.spawn(function()
 		local ok, result = pcall(function()
 			if mode == "play" then
@@ -3035,6 +3148,7 @@ local function startPlaytest(requestData)
 			logConnection = nil
 		end
 		testRunning = false
+		cleanupStopListener()
 	end)
 	return {
 		success = true,
@@ -3047,21 +3161,17 @@ local function stopPlaytest(_requestData)
 			error = "No test is currently running",
 		}
 	end
+	local _object = {
+		success = true,
+	}
+	local _left = "output"
 	local _array = {}
 	local _length = #_array
 	table.move(outputBuffer, 1, #outputBuffer, _length + 1, _array)
-	local output = _array
-	if logConnection then
-		logConnection:Disconnect()
-		logConnection = nil
-	end
-	testRunning = false
-	return {
-		success = true,
-		output = output,
-		outputCount = #output,
-		message = "Output captured. Press Stop in Studio to end the play session.",
-	}
+	_object[_left] = _array
+	_object.outputCount = #outputBuffer
+	_object.message = "Stop signal sent. The play session will end shortly."
+	return _object
 end
 local function getPlaytestOutput(_requestData)
 	local _object = {
@@ -3090,7 +3200,7 @@ return {
         <Properties>
           <string name="Name">State</string>
           <string name="Source"><![CDATA[-- Compiled with roblox-ts v3.0.0
-local CURRENT_VERSION = "2.1.0"
+local CURRENT_VERSION = "2.2.6"
 local MAX_CONNECTIONS = 5
 local BASE_PORT = 58741
 local activeTabIndex = 0

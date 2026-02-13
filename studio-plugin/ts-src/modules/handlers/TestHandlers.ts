@@ -1,10 +1,6 @@
-import { HttpService, LogService } from "@rbxts/services";
+import { LogService } from "@rbxts/services";
 
 const StudioTestService = game.GetService("StudioTestService");
-const ServerScriptService = game.GetService("ServerScriptService");
-const ScriptEditorService = game.GetService("ScriptEditorService");
-
-const STOP_LISTENER_NAME = "__MCP_StopListener";
 
 interface OutputEntry {
 	message: string;
@@ -17,72 +13,9 @@ let outputBuffer: OutputEntry[] = [];
 let logConnection: RBXScriptConnection | undefined;
 let testResult: unknown;
 let testError: string | undefined;
-let stopListenerScript: Script | undefined;
-
-function buildStopListenerSource(port: number): string {
-	return `local HttpService = game:GetService("HttpService")
-local StudioTestService = game:GetService("StudioTestService")
-warn("[MCP] Stop listener started, polling port ${port}")
-while true do
-	local ok, res = pcall(function()
-		return HttpService:RequestAsync({
-			Url = "http://127.0.0.1:${port}/playtest-stop-signal",
-			Method = "GET",
-		})
-	end)
-	if not ok then
-		warn("[MCP] HTTP failed: " .. tostring(res))
-	elseif not res.Success then
-		warn("[MCP] HTTP " .. tostring(res.StatusCode))
-	else
-		local dok, data = pcall(function()
-			return HttpService:JSONDecode(res.Body)
-		end)
-		if dok and data.shouldStop then
-			warn("[MCP] Stop signal received, calling EndTest")
-			local eok, eerr = pcall(function() StudioTestService:EndTest("stopped_by_mcp") end)
-			if not eok then
-				warn("[MCP] EndTest failed: " .. tostring(eerr))
-			end
-			return
-		end
-	end
-	task.wait(1)
-end`;
-}
-
-function cleanupStopListener() {
-	if (stopListenerScript) {
-		pcall(() => stopListenerScript!.Destroy());
-		stopListenerScript = undefined;
-	}
-}
-
-function injectStopListener(serverPort: number) {
-	// HttpEnabled is typed readonly but writable from plugin context
-	(HttpService as unknown as { HttpEnabled: boolean }).HttpEnabled = true;
-
-	const listener = new Instance("Script");
-	listener.Name = STOP_LISTENER_NAME;
-	listener.Parent = ServerScriptService;
-
-	const source = buildStopListenerSource(serverPort);
-
-	// Try ScriptEditorService first (modern API), fall back to direct Source
-	const [seOk] = pcall(() => {
-		ScriptEditorService.UpdateSourceAsync(listener, () => source);
-	});
-	if (!seOk) {
-		(listener as unknown as { Source: string }).Source = source;
-	}
-
-	stopListenerScript = listener;
-	warn(`[MCP] Stop listener injected (port ${serverPort})`);
-}
 
 function startPlaytest(requestData: Record<string, unknown>) {
 	const mode = requestData.mode as string | undefined;
-	const serverPort = requestData.serverPort as number | undefined;
 
 	if (mode !== "play" && mode !== "run") {
 		return { error: 'mode must be "play" or "run"' };
@@ -97,8 +30,6 @@ function startPlaytest(requestData: Record<string, unknown>) {
 	testResult = undefined;
 	testError = undefined;
 
-	cleanupStopListener();
-
 	logConnection = LogService.MessageOut.Connect((message, messageType) => {
 		outputBuffer.push({
 			message,
@@ -106,13 +37,6 @@ function startPlaytest(requestData: Record<string, unknown>) {
 			timestamp: tick(),
 		});
 	});
-
-	if (serverPort !== undefined && serverPort > 0) {
-		const [injected, injErr] = pcall(() => injectStopListener(serverPort));
-		if (!injected) {
-			warn(`[MCP] Failed to inject stop listener: ${injErr}`);
-		}
-	}
 
 	task.spawn(() => {
 		const [ok, result] = pcall(() => {
@@ -133,8 +57,6 @@ function startPlaytest(requestData: Record<string, unknown>) {
 			logConnection = undefined;
 		}
 		testRunning = false;
-
-		cleanupStopListener();
 	});
 
 	return { success: true, message: `Playtest started in ${mode} mode` };
@@ -145,11 +67,19 @@ function stopPlaytest(_requestData: Record<string, unknown>) {
 		return { error: "No test is currently running" };
 	}
 
+	const [ok, err] = pcall(() => {
+		(StudioTestService as unknown as { EndTest(reason: string): void }).EndTest("stopped_by_mcp");
+	});
+
+	if (!ok) {
+		return { error: `EndTest failed: ${err}` };
+	}
+
 	return {
 		success: true,
 		output: [...outputBuffer],
 		outputCount: outputBuffer.size(),
-		message: "Stop signal sent. The play session will end shortly.",
+		message: "Playtest stopped.",
 	};
 }
 

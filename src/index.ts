@@ -20,7 +20,6 @@ class RobloxStudioMCPServer {
   private server: Server;
   private tools: RobloxStudioTools;
   private bridge: BridgeService;
-  private httpPort = 0;
 
   constructor() {
     this.server = new Server(
@@ -1000,7 +999,7 @@ class RobloxStudioMCPServer {
             return await this.tools.executeLuau((args as any)?.code as string);
 
           case 'start_playtest':
-            return await this.tools.startPlaytest((args as any)?.mode as string, this.httpPort);
+            return await this.tools.startPlaytest((args as any)?.mode as string);
           case 'stop_playtest':
             return await this.tools.stopPlaytest();
           case 'get_playtest_output':
@@ -1090,8 +1089,6 @@ class RobloxStudioMCPServer {
       }
     }
 
-    this.httpPort = boundPort;
-    (httpServer as any).setServerPort(boundPort);
 
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
