@@ -98,6 +98,64 @@ export class RobloxStudioTools {
     return base;
   }
 
+  private isTruncatedFullSourceResponse(response: any) {
+    if (!response || typeof response !== 'object') {
+      return false;
+    }
+
+    if ((response as any).truncated === true) {
+      return true;
+    }
+
+    const source = this.extractSource(response);
+    const sourceLength = typeof (response as any).sourceLength === 'number' ? (response as any).sourceLength : null;
+    const lineCount = typeof (response as any).lineCount === 'number' ? (response as any).lineCount : null;
+    const returnedEndLine = typeof (response as any).endLine === 'number' ? (response as any).endLine : null;
+
+    return Boolean(
+      sourceLength !== null && source.length < sourceLength &&
+      lineCount !== null && returnedEndLine !== null && returnedEndLine < lineCount
+    );
+  }
+
+  private async readFullScriptSource(instancePath: string) {
+    const response = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+    if (!this.isTruncatedFullSourceResponse(response)) {
+      return response;
+    }
+
+    const lineCount = typeof response?.lineCount === 'number' ? response.lineCount : 0;
+    if (lineCount < 1) {
+      throw new Error(`Plugin returned truncated source for ${instancePath} without a valid lineCount.`);
+    }
+
+    const chunkSize = 1000;
+    const chunks: string[] = [];
+    for (let startLine = 1; startLine <= lineCount; startLine += chunkSize) {
+      const endLine = Math.min(lineCount, startLine + chunkSize - 1);
+      const chunkResponse = await this.client.request('/api/get-script-source', {
+        instancePath,
+        startLine,
+        endLine,
+      });
+      chunks.push(this.extractSource(chunkResponse));
+    }
+
+    const fullSource = chunks.join('\n');
+
+    return {
+      ...response,
+      source: fullSource,
+      startLine: 1,
+      endLine: lineCount,
+      isPartial: false,
+      truncated: false,
+      reconstructedFromChunks: true,
+      sourceLength: fullSource.length,
+      note: 'Full source reconstructed from chunked reads because the plugin returned a truncated full-source response.',
+    };
+  }
+
   private normalizeSource(source: string) {
     return source.replace(/\r\n/g, '\n');
   }
@@ -111,10 +169,13 @@ export class RobloxStudioTools {
   }
 
   private countLines(source: string) {
-    if (source.length === 0) {
-      return 0;
+    const normalized = this.normalizeAllLineEndings(source);
+    if (normalized.length === 0) {
+      return 1;
     }
-    return this.normalizeAllLineEndings(source).split('\n').length;
+    return normalized.endsWith('\n')
+      ? normalized.split('\n').length - 1
+      : normalized.split('\n').length;
   }
 
   private analyzeDriftSource(source: string): DriftSourceAnalysis {
@@ -814,7 +875,7 @@ export class RobloxStudioTools {
     if (!instancePath) {
       throw new Error('Instance path is required for create_script_snapshot');
     }
-    const response = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+    const response = await this.readFullScriptSource(instancePath);
     const source = this.extractSource(response);
     const record = this.pushSnapshot(instancePath, source, label);
     return {
@@ -875,7 +936,7 @@ export class RobloxStudioTools {
       12,
     );
 
-    const verifyResponse = await this.client.request('/api/get-script-source', { instancePath: record.instancePath, fullSource: true });
+    const verifyResponse = await this.readFullScriptSource(record.instancePath);
     const currentSource = this.normalizeSource(this.extractSource(verifyResponse));
     const currentHash = this.hashSource(currentSource);
     const restored = currentHash === record.sourceHash;
@@ -909,7 +970,7 @@ export class RobloxStudioTools {
       throw new Error('Instance path and source are required for apply_and_verify_script_source');
     }
 
-    const beforeResponse = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+    const beforeResponse = await this.readFullScriptSource(instancePath);
     const beforeSource = this.normalizeSource(this.extractSource(beforeResponse));
     const beforeHash = this.hashSource(beforeSource);
     if (expectedHash && expectedHash !== beforeHash) {
@@ -934,7 +995,7 @@ export class RobloxStudioTools {
       throw new Error(`Failed to apply source for ${instancePath}: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    const afterResponse = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+    const afterResponse = await this.readFullScriptSource(instancePath);
     const afterSource = this.normalizeSource(this.extractSource(afterResponse));
     const afterHash = this.hashSource(afterSource);
     const matchesHash = afterHash === targetHash;
@@ -1017,7 +1078,7 @@ export class RobloxStudioTools {
 
       let studioSource = '';
       try {
-        const studio = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+        const studio = await this.readFullScriptSource(instancePath);
         studioSource = this.extractSource(studio);
       } catch (error) {
         results.push({
@@ -1140,12 +1201,14 @@ export class RobloxStudioTools {
       throw new Error('Instance path is required for get_script_snapshot');
     }
 
-    const response = await this.client.request('/api/get-script-source', {
-      instancePath,
-      startLine,
-      endLine,
-      fullSource: !startLine && !endLine,
-    });
+    const response = (!startLine && !endLine)
+      ? await this.readFullScriptSource(instancePath)
+      : await this.client.request('/api/get-script-source', {
+          instancePath,
+          startLine,
+          endLine,
+          fullSource: false,
+        });
     const source = this.extractSource(response);
     const snapshot = {
       ...response,
@@ -1169,7 +1232,7 @@ export class RobloxStudioTools {
 
     let currentHash: string | null = null;
     if (expectedHash) {
-      const snapshotResponse = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+      const snapshotResponse = await this.readFullScriptSource(instancePath);
       const currentSource = this.extractSource(snapshotResponse);
       currentHash = this.hashSource(currentSource);
       if (currentHash !== expectedHash) {
@@ -1195,7 +1258,7 @@ export class RobloxStudioTools {
     );
     let newHash: string | null = null;
     if (expectedHash) {
-      const updatedSource = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+      const updatedSource = await this.readFullScriptSource(instancePath);
       newHash = this.hashSource(this.extractSource(updatedSource));
     }
 
@@ -1289,7 +1352,7 @@ export class RobloxStudioTools {
     let originalHash: string | null = null;
 
     if (needsSnapshot) {
-      const snapshotResponse = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+      const snapshotResponse = await this.readFullScriptSource(instancePath);
       originalSource = this.extractSource(snapshotResponse);
       originalHash = this.hashSource(originalSource);
     }
@@ -1334,7 +1397,7 @@ export class RobloxStudioTools {
 
     let newHash: string | null = null;
     if (!fastMode) {
-      const finalResponse = await this.client.request('/api/get-script-source', { instancePath, fullSource: true });
+      const finalResponse = await this.readFullScriptSource(instancePath);
       newHash = this.hashSource(this.extractSource(finalResponse));
     }
 

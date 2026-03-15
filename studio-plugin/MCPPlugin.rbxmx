@@ -2535,6 +2535,7 @@ local function getScriptSource(requestData)
 	local instancePath = requestData.instancePath
 	local startLine = requestData.startLine
 	local endLine = requestData.endLine
+	local fullSourceRequested = requestData.fullSource == true
 	if not (instancePath ~= "" and instancePath) then
 		return {
 			error = "Instance path is required",
@@ -2618,7 +2619,7 @@ local function getScriptSource(requestData)
 			isPartial = startLine ~= nil or endLine ~= nil,
 			truncated = false,
 		}
-		if startLine == nil and endLine == nil and #fullSource > 50000 then
+		if not fullSourceRequested and startLine == nil and endLine == nil and #fullSource > 50000 then
 			local truncatedLines = {}
 			local truncatedNumberedLines = {}
 			local maxLines = math.min(1000, #lines)

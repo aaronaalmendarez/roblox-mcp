@@ -18,6 +18,7 @@ function getScriptSource(requestData: Record<string, unknown>) {
 	const instancePath = requestData.instancePath as string;
 	const startLine = requestData.startLine as number | undefined;
 	const endLine = requestData.endLine as number | undefined;
+	const fullSourceRequested = requestData.fullSource === true;
 
 	if (!instancePath) return { error: "Instance path is required" };
 
@@ -75,7 +76,7 @@ function getScriptSource(requestData: Record<string, unknown>) {
 			truncated: false,
 		};
 
-		if (startLine === undefined && endLine === undefined && fullSource.size() > 50000) {
+		if (!fullSourceRequested && startLine === undefined && endLine === undefined && fullSource.size() > 50000) {
 			const truncatedLines: string[] = [];
 			const truncatedNumberedLines: string[] = [];
 			const maxLines = math.min(1000, lines.size());

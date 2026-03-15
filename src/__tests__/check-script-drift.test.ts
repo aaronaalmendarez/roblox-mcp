@@ -108,4 +108,68 @@ describe('checkScriptDrift', () => {
       formattingOnly: false,
     });
   });
+
+  test('reconstructs full Studio source when the plugin truncates a full-source read', async () => {
+    const lines = Array.from({ length: 1205 }, (_, index) => `line_${index + 1}`);
+    const studioSource = lines.join('\n');
+    const truncatedSource = lines.slice(0, 1000).join('\n');
+    const localFile = path.join(tempDir, 'Chunked.server.luau');
+
+    await writeFile(localFile, studioSource, 'utf8');
+    studioRequest.mockImplementation(async (_endpoint: string, payload: Record<string, unknown>) => {
+      if (payload.fullSource === true) {
+        return {
+          source: truncatedSource,
+          sourceLength: studioSource.length,
+          lineCount: lines.length,
+          startLine: 1,
+          endLine: 1000,
+          truncated: true,
+        };
+      }
+
+      if (payload.startLine === 1 && payload.endLine === 1000) {
+        return {
+          source: truncatedSource,
+          sourceLength: studioSource.length,
+          lineCount: lines.length,
+          startLine: 1,
+          endLine: 1000,
+          truncated: false,
+        };
+      }
+
+      if (payload.startLine === 1001 && payload.endLine === 1205) {
+        return {
+          source: lines.slice(1000).join('\n'),
+          sourceLength: studioSource.length,
+          lineCount: lines.length,
+          startLine: 1001,
+          endLine: 1205,
+          truncated: false,
+        };
+      }
+
+      throw new Error(`Unexpected payload: ${JSON.stringify(payload)}`);
+    });
+
+    const response = await tools.getScriptSnapshot('game.ServerScriptService.Chunked');
+    const snapshot = JSON.parse(response.content[0].text);
+
+    expect(snapshot.source).toBe(studioSource);
+    expect(snapshot.truncated).toBe(false);
+    expect(snapshot.reconstructedFromChunks).toBe(true);
+
+    const driftResponse = await tools.checkScriptDrift(
+      [{ instancePath: 'game.ServerScriptService.Chunked', localFile }],
+      true,
+    );
+    const drift = JSON.parse(driftResponse.content[0].text);
+
+    expect(drift.summary).toMatchObject({
+      inSync: 1,
+      drift: 0,
+      failures: 0,
+    });
+  });
 });
