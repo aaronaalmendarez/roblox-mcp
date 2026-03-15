@@ -204,12 +204,24 @@ local function pollForRequests(connIndex)
 				local _condition_1 = conn.mcpWaitStartTime
 				if _condition_1 == nil then
 					_condition_1 = tick()
+					end
+					local elapsed = _exp - _condition_1
+					el.troubleshootLabel.Visible = elapsed > 8
+					if elapsed > 3 and elapsed % 5 < conn.pollInterval then
+						task.spawn(function()
+							local discovered = discoverPort()
+							if discovered ~= nil and discovered ~= conn.port then
+								conn.port = discovered
+								conn.serverUrl = `http://localhost:{discovered}`
+								if connIndex == State.getActiveTabIndex() then
+									UI.getElements().urlInput.Text = conn.serverUrl
+								end
+							end
+						end)
+					end
+					UI.startPulseAnimation()
 				end
-				local elapsed = _exp - _condition_1
-				el.troubleshootLabel.Visible = elapsed > 8
-				UI.startPulseAnimation()
 			end
-		end
 		if data.request and mcpConnected then
 			task.spawn(function()
 				local ok, response = pcall(function()
@@ -226,11 +238,25 @@ local function pollForRequests(connIndex)
 		end
 	elseif conn.isActive then
 		conn.consecutiveFailures += 1
-		if conn.consecutiveFailures > 1 then
-			conn.currentRetryDelay = math.min(conn.currentRetryDelay * conn.retryBackoffMultiplier, conn.maxRetryDelay)
-		end
-		if connIndex == State.getActiveTabIndex() then
-			local el = ui
+			if conn.consecutiveFailures > 1 then
+				conn.currentRetryDelay = math.min(conn.currentRetryDelay * conn.retryBackoffMultiplier, conn.maxRetryDelay)
+			end
+			if conn.consecutiveFailures == 5 or conn.consecutiveFailures % 20 == 0 then
+				task.spawn(function()
+					local discovered = discoverPort()
+					if discovered ~= nil and discovered ~= conn.port then
+						conn.port = discovered
+						conn.serverUrl = `http://localhost:{discovered}`
+						conn.consecutiveFailures = 0
+						conn.currentRetryDelay = 0.5
+						if connIndex == State.getActiveTabIndex() then
+							UI.getElements().urlInput.Text = conn.serverUrl
+						end
+					end
+				end)
+			end
+			if connIndex == State.getActiveTabIndex() then
+				local el = ui
 			if conn.consecutiveFailures >= conn.maxFailuresBeforeError then
 				el.statusLabel.Text = "Server unavailable"
 				el.statusLabel.TextColor3 = Color3.fromRGB(239, 68, 68)
@@ -288,6 +314,7 @@ local function pollForRequests(connIndex)
 	end
 end
 local function discoverPort()
+	local firstActivePort
 	for offset = 0, 4 do
 		local port = State.BASE_PORT + offset
 		local success, result = pcall(function()
@@ -303,12 +330,17 @@ local function discoverPort()
 			local ok, data = pcall(function()
 				return HttpService:JSONDecode(result.Body)
 			end)
-			if ok and data.pluginConnected == false then
-				return port
+			if ok and data.mcpServerActive then
+				if not data.pluginConnected then
+					return port
+				end
+				if firstActivePort == nil then
+					firstActivePort = port
+				end
 			end
 		end
 	end
-	return nil
+	return firstActivePort
 end
 local function activatePlugin(connIndex)
 	local _condition = connIndex
@@ -338,16 +370,6 @@ local function activatePlugin(connIndex)
 		UI.updateUIState()
 	end
 	UI.updateTabDot(idx)
-	if not conn.heartbeatConnection then
-		conn.heartbeatConnection = RunService.Heartbeat:Connect(function()
-			local now = tick()
-			local currentInterval = if conn.consecutiveFailures > 5 then conn.currentRetryDelay else conn.pollInterval
-			if now - conn.lastPoll > currentInterval then
-				conn.lastPoll = now
-				pollForRequests(idx)
-			end
-		end)
-	end
 	task.spawn(function()
 		local discoveredPort = discoverPort()
 		if discoveredPort ~= nil then
@@ -356,6 +378,16 @@ local function activatePlugin(connIndex)
 			if idx == State.getActiveTabIndex() then
 				ui.urlInput.Text = conn.serverUrl
 			end
+		end
+		if not conn.heartbeatConnection then
+			conn.heartbeatConnection = RunService.Heartbeat:Connect(function()
+				local now = tick()
+				local currentInterval = if conn.consecutiveFailures > 5 then conn.currentRetryDelay else conn.pollInterval
+				if now - conn.lastPoll > currentInterval then
+					conn.lastPoll = now
+					pollForRequests(idx)
+				end
+			end)
 		end
 		pcall(function()
 			HttpService:RequestAsync({

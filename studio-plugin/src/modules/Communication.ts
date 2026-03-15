@@ -157,6 +157,18 @@ function pollForRequests(connIndex: number) {
 				}
 				const elapsed = tick() - (conn.mcpWaitStartTime ?? tick());
 				el.troubleshootLabel.Visible = elapsed > 8;
+				if (elapsed > 3 && elapsed % 5 < conn.pollInterval) {
+					task.spawn(() => {
+						const discovered = discoverPort();
+						if (discovered !== undefined && discovered !== conn.port) {
+							conn.port = discovered;
+							conn.serverUrl = `http://localhost:${discovered}`;
+							if (connIndex === State.getActiveTabIndex()) {
+								UI.getElements().urlInput.Text = conn.serverUrl;
+							}
+						}
+					});
+				}
 				UI.startPulseAnimation();
 			}
 		}
@@ -179,6 +191,21 @@ function pollForRequests(connIndex: number) {
 				conn.currentRetryDelay * conn.retryBackoffMultiplier,
 				conn.maxRetryDelay,
 			);
+		}
+
+		if (conn.consecutiveFailures === 5 || conn.consecutiveFailures % 20 === 0) {
+			task.spawn(() => {
+				const discovered = discoverPort();
+				if (discovered !== undefined && discovered !== conn.port) {
+					conn.port = discovered;
+					conn.serverUrl = `http://localhost:${discovered}`;
+					conn.consecutiveFailures = 0;
+					conn.currentRetryDelay = 0.5;
+					if (connIndex === State.getActiveTabIndex()) {
+						UI.getElements().urlInput.Text = conn.serverUrl;
+					}
+				}
+			});
 		}
 
 		if (connIndex === State.getActiveTabIndex()) {
@@ -241,6 +268,7 @@ function pollForRequests(connIndex: number) {
 }
 
 function discoverPort(): number | undefined {
+	let firstActivePort: number | undefined;
 	for (let offset = 0; offset < 5; offset++) {
 		const port = State.BASE_PORT + offset;
 		const [success, result] = pcall(() => {
@@ -252,13 +280,16 @@ function discoverPort(): number | undefined {
 		});
 
 		if (success && result.Success) {
-			const [ok, data] = pcall(() => HttpService.JSONDecode(result.Body) as { pluginConnected: boolean });
-			if (ok && data.pluginConnected === false) {
-				return port;
+			const [ok, data] = pcall(() =>
+				HttpService.JSONDecode(result.Body) as { mcpServerActive: boolean; pluginConnected: boolean },
+			);
+			if (ok && data.mcpServerActive) {
+				if (!data.pluginConnected) return port;
+				if (firstActivePort === undefined) firstActivePort = port;
 			}
 		}
 	}
-	return undefined;
+	return firstActivePort;
 }
 
 function activatePlugin(connIndex?: number) {
@@ -281,17 +312,6 @@ function activatePlugin(connIndex?: number) {
 	}
 	UI.updateTabDot(idx);
 
-	if (!conn.heartbeatConnection) {
-		conn.heartbeatConnection = RunService.Heartbeat.Connect(() => {
-			const now = tick();
-			const currentInterval = conn.consecutiveFailures > 5 ? conn.currentRetryDelay : conn.pollInterval;
-			if (now - conn.lastPoll > currentInterval) {
-				conn.lastPoll = now;
-				pollForRequests(idx);
-			}
-		});
-	}
-
 	task.spawn(() => {
 		const discoveredPort = discoverPort();
 		if (discoveredPort !== undefined) {
@@ -300,6 +320,17 @@ function activatePlugin(connIndex?: number) {
 			if (idx === State.getActiveTabIndex()) {
 				ui.urlInput.Text = conn.serverUrl;
 			}
+		}
+
+		if (!conn.heartbeatConnection) {
+			conn.heartbeatConnection = RunService.Heartbeat.Connect(() => {
+				const now = tick();
+				const currentInterval = conn.consecutiveFailures > 5 ? conn.currentRetryDelay : conn.pollInterval;
+				if (now - conn.lastPoll > currentInterval) {
+					conn.lastPoll = now;
+					pollForRequests(idx);
+				}
+			});
 		}
 
 		pcall(() => {
