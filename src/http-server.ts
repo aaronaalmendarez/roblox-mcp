@@ -36,6 +36,7 @@ export function createHttpServer(tools: RobloxStudioTools, bridge: BridgeService
     'set_script_source_checked',
     'set_script_source_fast',
     'set_script_source_fast_gzip',
+    'commit_script_source_upload',
     'apply_and_verify_script_source',
     'rollback_script_snapshot',
     'batch_script_edits',
@@ -591,6 +592,47 @@ export function createHttpServer(tools: RobloxStudioTools, bridge: BridgeService
   app.post('/mcp/get_script_snapshot', async (req, res) => {
     try {
       const result = await tools.getScriptSnapshot(req.body.instancePath, req.body.startLine, req.body.endLine);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/begin_script_source_upload', async (req, res) => {
+    try {
+      const result = await tools.beginScriptSourceUpload(req.body.instancePath, req.body.expectedHash, req.body.mode);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/append_script_source_upload_chunk', async (req, res) => {
+    try {
+      const result = await tools.appendScriptSourceUploadChunk(req.body.uploadId, req.body.chunk, req.body.chunkIndex);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/commit_script_source_upload', async (req, res) => {
+    try {
+      const result = await tools.commitScriptSourceUpload(
+        req.body.uploadId,
+        req.body.verifyNeedle,
+        req.body.rollbackOnFailure,
+        req.body.preferFast,
+      );
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/mcp/cancel_script_source_upload', async (req, res) => {
+    try {
+      const result = await tools.cancelScriptSourceUpload(req.body.uploadId);
       res.json(result);
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });

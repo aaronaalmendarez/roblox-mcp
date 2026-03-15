@@ -115,9 +115,47 @@ npm run build:plugin
 
 - Optimistic concurrency via SHA-256 source hashes
 - Write idempotency — replay-safe with `X-Idempotency-Key`
-- Fast write paths for large scripts (optional gzip compression)
+- Chunked script uploads for very large rewrites that exceed single MCP payload limits
+- Safe bridge fallback for script writes instead of `set_property` on `Source`
+- Full-source reads for large scripts automatically avoid truncated plugin responses
 - Smart plugin polling: hot → active → idle intervals
+- Drift checks ignore formatting-only differences by default and report both raw and normalized hashes
 - Atomic **apply → verify → rollback** pipeline
+
+---
+
+## 🆕 Recent Reliability Fixes
+
+- **Large script reads are no longer silently truncated** — full-source reads now return the complete script even when the plugin would otherwise cap the response to the first 1000 lines.
+- **Formatting-only drift no longer shows up as content drift** — `check_script_drift` now normalizes line endings, BOM, trailing whitespace, and trailing final newlines by default.
+- **Drift output is more explicit** — diagnostics now include `comparisonMode`, `formattingOnly`, `formattingDifferences`, raw hashes/lengths, and normalized hashes/lengths.
+- **Large script writes now have a safe transport** — use the chunked upload tools or `scripts/push-script-fast.mjs` for large files; they commit through the plugin bridge and `UpdateSourceAsync` instead of `set_property`.
+- **`Source` writes no longer go through property tools** — `set_property` and `mass_set_property` now reject the `Source` property so escape sequences are not corrupted.
+- **Server and plugin defaults are aligned around port `3002`** — current builds start on `3002` first and keep `58741` only as a legacy fallback.
+
+Example of the expected healthy case:
+
+```json
+{
+  "status": "in-sync",
+  "comparisonMode": "canonical-text",
+  "formattingOnly": true,
+  "formattingDifferences": ["trailing-newline"],
+  "rawLocalLength": 74884,
+  "rawStudioLength": 74883,
+  "normalizedLocalLength": 74883,
+  "normalizedStudioLength": 74883
+}
+```
+
+This means the raw bytes differ, but the actual script content is the same.
+
+A real healthy verification case now looks like this:
+
+- Full source read: `localLength: 74883`, `studioLength: 74883`
+- Raw bytes can still differ by one trailing newline: `rawLocalLength: 74884`, `rawStudioLength: 74883`
+- Normalized hashes then match, so the result is correctly reported as `in-sync`
+- The result includes `comparisonMode`, `formattingOnly`, `formattingDifferences`, and raw vs normalized hashes/lengths
 
 ---
 
@@ -140,15 +178,19 @@ npm run build:plugin
 </details>
 
 <details>
-<summary><b>📝 Script Management</b> — 11 tools</summary>
+<summary><b>📝 Script Management</b> — 15 tools</summary>
 
 | Tool                             | Description                        |
 | :------------------------------- | :--------------------------------- |
-| `get_script_source`              | Read source (optional line range)  |
-| `get_script_snapshot`            | Source + SHA-256 hash              |
-| `set_script_source`              | Full rewrite (editor-safe)         |
+| `get_script_source`              | Read source (optional line range, full reads safe for large scripts)  |
+| `get_script_snapshot`            | Source + SHA-256 hash with full-source recovery              |
+| `set_script_source`              | Full rewrite (editor-safe; use chunked upload for very large files)         |
+| `begin_script_source_upload`     | Start chunked upload session for large files |
+| `append_script_source_upload_chunk` | Append one chunk to an upload session |
+| `commit_script_source_upload`    | Commit an uploaded script through the plugin bridge |
+| `cancel_script_source_upload`    | Discard an upload session without writing |
 | `set_script_source_checked`      | Write only if hash matches         |
-| `set_script_source_fast`         | Direct assignment (large scripts)  |
+| `set_script_source_fast`         | Fast write with safe bridge fallback  |
 | `set_script_source_fast_gzip`    | Gzip-compressed fast write         |
 | `edit_script_lines`              | Replace line ranges                |
 | `insert_script_lines`            | Insert at position                 |
@@ -174,8 +216,8 @@ npm run build:plugin
 | Tool                                  | Description                         |
 | :------------------------------------ | :---------------------------------- |
 | `get_instance_properties`             | All properties of an instance       |
-| `set_property`                        | Set any property                    |
-| `mass_set_property`                   | Set on multiple instances           |
+| `set_property`                        | Set any property except `Source`    |
+| `mass_set_property`                   | Set on multiple instances except `Source` |
 | `mass_get_property`                   | Read from multiple instances        |
 | `search_by_property`                  | Find by property value              |
 | `set_calculated_property`             | Formula-based property sets         |
@@ -209,7 +251,7 @@ npm run build:plugin
 | :--------------------- | :------------------------------ |
 | `get_runtime_state`    | Write queue + bridge telemetry  |
 | `get_diagnostics`      | Full diagnostic report          |
-| `check_script_drift`   | Local vs Studio hash comparison |
+| `check_script_drift`   | Local vs Studio drift check with formatting normalization and raw/normalized diagnostics |
 | `lint_deprecated_apis` | Deprecated API scanner          |
 </details>
 
@@ -662,7 +704,7 @@ curl http://localhost:3002/diagnostics
 | HTTP 403       | Game Settings → Security → Allow HTTP Requests         |
 | Disconnected   | Start the MCP server — red is normal until then        |
 | No tools       | Restart MCP client + Studio, check `/health`           |
-| Slow writes    | Use `set_script_source_fast` or `push-script-fast.mjs` |
+| Slow or large writes | Use chunked upload tools or `push-script-fast.mjs` |
 | Firewall       | Allow `localhost:3002`                                 |
 
 ---

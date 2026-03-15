@@ -708,7 +708,7 @@ class RobloxStudioMCPServer {
           },
           {
             name: 'set_script_source',
-            description: 'Replace the entire source code of a Roblox script. Uses ScriptEditorService:UpdateSourceAsync (works with open editors). For partial edits, prefer edit_script_lines, insert_script_lines, or delete_script_lines.',
+            description: 'Replace the entire source code of a Roblox script. Uses ScriptEditorService:UpdateSourceAsync (works with open editors). For very large files that exceed MCP payload limits, use the chunked script upload tools instead.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -726,6 +726,93 @@ class RobloxStudioMCPServer {
                 }
               },
               required: ['instancePath', 'source']
+            }
+          },
+          {
+            name: 'begin_script_source_upload',
+            description: 'Start a chunked script upload session for large source files that do not fit in a single MCP tool payload.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                instancePath: {
+                  type: 'string',
+                  description: 'Roblox instance path to the script'
+                },
+                expectedHash: {
+                  type: 'string',
+                  description: 'Optional optimistic lock hash from get_script_snapshot'
+                },
+                mode: {
+                  type: 'string',
+                  enum: ['set', 'apply_and_verify'],
+                  description: 'Commit mode for the uploaded source',
+                  default: 'set'
+                }
+              },
+              required: ['instancePath']
+            }
+          },
+          {
+            name: 'append_script_source_upload_chunk',
+            description: 'Append one chunk of source text to a chunked upload session.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                uploadId: {
+                  type: 'string',
+                  description: 'Upload session id from begin_script_source_upload'
+                },
+                chunk: {
+                  type: 'string',
+                  description: 'Next source chunk'
+                },
+                chunkIndex: {
+                  type: 'number',
+                  description: 'Optional zero-based chunk index for ordering validation'
+                }
+              },
+              required: ['uploadId', 'chunk']
+            }
+          },
+          {
+            name: 'commit_script_source_upload',
+            description: 'Commit a chunked script upload session to Studio after all chunks are appended.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                uploadId: {
+                  type: 'string',
+                  description: 'Upload session id from begin_script_source_upload'
+                },
+                verifyNeedle: {
+                  type: 'string',
+                  description: 'Optional required text when mode is apply_and_verify'
+                },
+                rollbackOnFailure: {
+                  type: 'boolean',
+                  default: true
+                },
+                preferFast: {
+                  type: 'boolean',
+                  description: 'Prefer fast write path when mode is apply_and_verify',
+                  default: false
+                }
+              },
+              required: ['uploadId']
+            }
+          },
+          {
+            name: 'cancel_script_source_upload',
+            description: 'Discard a chunked script upload session without writing anything to Studio.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                uploadId: {
+                  type: 'string',
+                  description: 'Upload session id from begin_script_source_upload'
+                }
+              },
+              required: ['uploadId']
             }
           },
           {
@@ -752,7 +839,7 @@ class RobloxStudioMCPServer {
           },
           {
             name: 'set_script_source_fast',
-            description: 'Fast full-source write using direct assignment. Preferred for very large scripts where editor-safe updates can hang.',
+            description: 'Fast full-source write alias. Uses plugin fast endpoint when available, otherwise safely falls back to the editor-safe set_script_source bridge path.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -847,7 +934,7 @@ class RobloxStudioMCPServer {
           },
           {
             name: 'apply_and_verify_script_source',
-            description: 'Atomically apply full script source, verify hash/content, and rollback to prewrite snapshot if verification fails.',
+            description: 'Atomically apply full script source, verify hash/content, and rollback to prewrite snapshot if verification fails. For very large files that exceed MCP payload limits, use begin/append/commit script upload with mode apply_and_verify.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -1303,6 +1390,27 @@ class RobloxStudioMCPServer {
             return await this.tools.getScriptSnapshot((args as any)?.instancePath as string, (args as any)?.startLine, (args as any)?.endLine);
           case 'set_script_source':
             return await this.tools.setScriptSource((args as any)?.instancePath as string, (args as any)?.source as string, (args as any)?.expectedHash as string | undefined);
+          case 'begin_script_source_upload':
+            return await this.tools.beginScriptSourceUpload(
+              (args as any)?.instancePath as string,
+              (args as any)?.expectedHash as string | undefined,
+              (args as any)?.mode as 'set' | 'apply_and_verify' | undefined,
+            );
+          case 'append_script_source_upload_chunk':
+            return await this.tools.appendScriptSourceUploadChunk(
+              (args as any)?.uploadId as string,
+              (args as any)?.chunk as string,
+              (args as any)?.chunkIndex as number | undefined,
+            );
+          case 'commit_script_source_upload':
+            return await this.tools.commitScriptSourceUpload(
+              (args as any)?.uploadId as string,
+              (args as any)?.verifyNeedle as string | undefined,
+              (args as any)?.rollbackOnFailure as boolean | undefined,
+              (args as any)?.preferFast as boolean | undefined,
+            );
+          case 'cancel_script_source_upload':
+            return await this.tools.cancelScriptSourceUpload((args as any)?.uploadId as string);
           case 'set_script_source_checked':
             return await this.tools.setScriptSourceChecked((args as any)?.instancePath as string, (args as any)?.source as string, (args as any)?.expectedHash as string);
           case 'set_script_source_fast':
@@ -1408,7 +1516,7 @@ class RobloxStudioMCPServer {
   }
 
   async run() {
-    const basePort = process.env.ROBLOX_STUDIO_PORT ? parseInt(process.env.ROBLOX_STUDIO_PORT) : 58741;
+    const basePort = process.env.ROBLOX_STUDIO_PORT ? parseInt(process.env.ROBLOX_STUDIO_PORT) : 3002;
     const maxPort = basePort + 4;
     const host = process.env.ROBLOX_STUDIO_HOST || '0.0.0.0';
     const httpServer = createHttpServer(this.tools, this.bridge);
@@ -1446,7 +1554,7 @@ class RobloxStudioMCPServer {
       }
     }
 
-    const LEGACY_PORT = 3002;
+    const LEGACY_PORT = 58741;
     let legacyServer: ReturnType<typeof createHttpServer> | undefined;
     if (boundPort !== LEGACY_PORT) {
       const legacy = createHttpServer(this.tools, this.bridge);

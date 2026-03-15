@@ -65,6 +65,8 @@ npm run build
 npm run build:plugin
 ```
 
+If you rebuilt the plugin to pick up a script-read or drift-detection fix, recopy `studio-plugin/MCPPlugin.rbxmx` into the Roblox plugins folder and restart Studio before testing.
+
 ### Step 3: Install the Studio Plugin
 
 The plugin file is located at `studio-plugin/MCPPlugin.rbxmx`. Copy it to Roblox's plugins folder:
@@ -600,9 +602,10 @@ node scripts/push-script-fast.mjs \
 |------|-------------|
 | `--instance <path>` | Studio script path (e.g., `game.ServerScriptService.Main`) |
 | `--file <path>` | Local `.luau` file path |
+| `--endpoint <name>` | Override the default chunked upload path |
 | `--verbose` | Show detailed output |
 | `--no-verify` | Skip verification after write |
-| `--gzip` | Use gzip compression for large files |
+| `--gzip` | Use gzip only with `--endpoint set_script_source_fast_gzip` |
 
 #### Push All Scripts in a Place
 
@@ -636,8 +639,9 @@ done
 
 - **Source control**: Local files are tracked in git, Studio scripts are not
 - **Luau lint**: Catch errors BEFORE they reach Studio
-- **No MCP edits**: MCP tools should READ Studio, not WRITE to it
-- **Explicit sync**: You control when changes go to Studio
+- **Safe writes**: `push-script-fast.mjs` now uses chunked upload + plugin bridge by default, so large scripts do not hit MCP payload limits
+- **No `Source` property fallback**: `set_property` is intentionally blocked for `Source` so escape sequences stay intact
+- **Explicit sync**: You control when local changes go to Studio
 
 #### Checklist Before Pushing
 
@@ -653,9 +657,17 @@ done
 - MCP server needs restart after `npm run build`
 - Kill old process and start fresh: `node dist/index.js`
 
+**Error: `Cannot POST /mcp/begin_script_source_upload`**
+- The running server is still on an older build that does not expose chunked upload tools
+- Run `npm run build`, restart the MCP server, and try again
+
 **Error: `pluginConnected: false`**
 - Plugin not installed or not active in Studio
 - Check Studio plugin toolbar for green indicator
+
+**Error: `set_property cannot be used for the Source property`**
+- Expected on current builds
+- Use `set_script_source`, the chunked upload tools, or `node scripts/push-script-fast.mjs`
 
 **Error: `Script not found`**
 - The script doesn't exist in Studio yet
@@ -680,15 +692,19 @@ done
 | `search_files` | Search by name/class/content | `query`, `searchType` ("name"/"type"/"content") |
 | `search_objects` | Find by name/class/property | `query`, `searchType`, `propertyName` |
 
-### Script Management (11 tools)
+### Script Management (15 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
-| `get_script_source` | Read script source | `instancePath`, `startLine`, `endLine` |
-| `get_script_snapshot` | Source + SHA-256 hash | `instancePath` |
+| `get_script_source` | Read script source (full reads are safe for large scripts) | `instancePath`, `startLine`, `endLine` |
+| `get_script_snapshot` | Source + SHA-256 hash with full-source recovery | `instancePath` |
 | `set_script_source` | Full script rewrite | `instancePath`, `source` |
+| `begin_script_source_upload` | Start chunked upload session | `instancePath`, `expectedHash`, `mode` |
+| `append_script_source_upload_chunk` | Append upload chunk | `uploadId`, `chunk`, `chunkIndex` |
+| `commit_script_source_upload` | Commit uploaded source | `uploadId`, `verifyNeedle`, `rollbackOnFailure`, `preferFast` |
+| `cancel_script_source_upload` | Discard upload session | `uploadId` |
 | `set_script_source_checked` | Hash-verified write | `instancePath`, `source`, `expectedHash` |
-| `set_script_source_fast` | Direct assignment | `instancePath`, `source` |
+| `set_script_source_fast` | Fast write with safe bridge fallback | `instancePath`, `source` |
 | `set_script_source_fast_gzip` | Compressed fast write | `instancePath`, `compressedSource` |
 | `edit_script_lines` | Replace line range | `instancePath`, `startLine`, `endLine`, `newContent` |
 | `insert_script_lines` | Insert at position | `instancePath`, `afterLine`, `newContent` |
@@ -709,8 +725,8 @@ done
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
-| `set_property` | Set single property | `instancePath`, `propertyName`, `propertyValue` |
-| `mass_set_property` | Set on multiple instances | `paths[]`, `propertyName`, `propertyValue` |
+| `set_property` | Set single property except `Source` | `instancePath`, `propertyName`, `propertyValue` |
+| `mass_set_property` | Set on multiple instances except `Source` | `paths[]`, `propertyName`, `propertyValue` |
 | `mass_get_property` | Get from multiple instances | `paths[]`, `propertyName` |
 | `search_by_property` | Find by property value | `propertyName`, `propertyValue` |
 | `set_calculated_property` | Formula-based set | `paths[]`, `propertyName`, `formula`, `variables` |
@@ -742,7 +758,7 @@ done
 |------|-------------|----------------|
 | `get_runtime_state` | Write queue + telemetry | (no params) |
 | `get_diagnostics` | Full diagnostic report | (no params) |
-| `check_script_drift` | Local vs Studio hash | `instancePath`, `localHash` |
+| `check_script_drift` | Canonical drift check with raw/normalized diagnostics | `mappings[]`, `normalizeLineEndings` |
 | `lint_deprecated_apis` | Deprecated API scanner | `instancePath` |
 
 ---
@@ -947,6 +963,65 @@ npm run place:status  # Shows resolved project path
 # 3. Verify file is in correct src/ subdirectory
 ls blueprint-v1/places/<slug>/src/ServerScriptService/
 ```
+
+### Problem: `check_script_drift` shows drift but the script content looks identical
+
+**Likely cause:** formatting-only differences such as CRLF vs LF, BOM, trailing whitespace, or a trailing final newline
+
+**What to look for:** the result should now include:
+- `comparisonMode`
+- `formattingOnly`
+- `formattingDifferences`
+- raw and normalized hashes / lengths
+
+**Healthy example:** raw lengths differ by 1 because of a trailing newline, but normalized lengths and normalized hashes match, so status is still `in-sync`.
+
+For example:
+- full source read shows `localLength: 74883` and `studioLength: 74883`
+- raw lengths can still differ as `74884` vs `74883`
+- normalized hashes match, so the content is correctly treated as identical
+- the result includes `comparisonMode`, `formattingOnly`, `formattingDifferences`, and raw vs normalized lengths/hashes
+
+**If those fields are missing:**
+```bash
+npm run build
+npm run build:plugin
+```
+
+Then recopy `studio-plugin/MCPPlugin.rbxmx` into the Roblox plugins folder, restart Studio, and restart the MCP server.
+
+### Problem: large `get_script_source` or `get_script_snapshot` reads stop around 1000 lines
+
+**Cause:** old plugin build still truncating full-source responses
+
+**Fix:**
+```bash
+npm run build
+npm run build:plugin
+```
+
+Then reinstall the rebuilt plugin and restart Studio. Current builds respect `fullSource: true`, and the server also reconstructs full source from chunked reads if a plugin response is still truncated.
+
+### Problem: large script writes fail, truncate, or corrupt escape sequences
+
+**Cause:** the write is going through an old build or through the wrong path
+
+**Correct behavior on current builds:**
+- very large rewrites use chunked upload tools or `node scripts/push-script-fast.mjs`
+- plugin writes commit through `UpdateSourceAsync`
+- `set_property` and `mass_set_property` reject `Source`
+
+**Fix:**
+```bash
+npm run build
+npm run build:plugin
+node dist/index.js
+```
+
+Then reinstall `studio-plugin/MCPPlugin.rbxmx`, restart Studio, and use either:
+- `set_script_source`
+- `begin_script_source_upload` → `append_script_source_upload_chunk` → `commit_script_source_upload`
+- `node scripts/push-script-fast.mjs --instance <path> --file <file>`
 
 ---
 

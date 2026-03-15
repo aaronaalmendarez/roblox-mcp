@@ -124,6 +124,15 @@ The reverse sync system prevents accidental data loss:
 | **Conflict files** | When both sides changed, writes a `.conflict` file instead of overwriting |
 | **State tracking** | Persists sync state between runs                                          |
 
+### Drift, Read, And Write Notes
+
+- `check_script_drift` now compares canonical text by default, so CRLF vs LF, BOM, trailing whitespace, and trailing final newlines do not count as real content drift.
+- Drift results now expose `comparisonMode`, `formattingOnly`, `formattingDifferences`, and raw vs normalized hashes/lengths. If raw lengths differ but normalized hashes match, the scripts are effectively in sync.
+- Full-source script reads are now chunk-safe for large scripts. If a plugin returns a truncated full read, the server reconstructs the complete source from ranged reads before hashing or snapshotting.
+- Large script pushes should go through `begin_script_source_upload` / `append_script_source_upload_chunk` / `commit_script_source_upload`, or just `node scripts/push-script-fast.mjs`, which now uses that chunked path by default.
+- `Source` should never be written through `set_property` or `mass_set_property`; current builds reject that path to avoid corrupting escape sequences in Luau source.
+- Current server and plugin builds default to `http://localhost:3002`, with legacy port `58741` kept only as a fallback during discovery.
+
 ### State File Locations
 
 | Mode            | State File                                            | Conflict Directory                                    |

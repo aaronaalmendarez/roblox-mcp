@@ -42,6 +42,8 @@ To:
 
 Then restart Roblox Studio.
 
+Current plugin builds default to `http://localhost:3002` and can rediscover the active MCP server if the first port guess is wrong.
+
 ## 5) Enable Studio settings
 
 In Roblox Studio:
@@ -120,6 +122,7 @@ npm run place:list
    - one-shot: `npm run blueprint:sync`
    - watch: `npm run blueprint:watch`
 6. Reverse sync (guarded): `npm run blueprint:reverse-sync`
+7. For full script rewrites, prefer `node scripts/push-script-fast.mjs --instance <path> --file <file>`, which now uses chunked upload + plugin bridge by default.
 
 ## 10) Luau lint integration
 
@@ -153,3 +156,8 @@ If MCP says enabled but has no tools:
 If full-source writes are slow:
 
 - Prefer `node scripts/push-script-fast.mjs --instance <path> --file <file>`.
+
+If script writes fail with `set_property cannot be used for the Source property`:
+
+- Expected on current builds.
+- Use `set_script_source`, the chunked upload tools, or `node scripts/push-script-fast.mjs` instead.

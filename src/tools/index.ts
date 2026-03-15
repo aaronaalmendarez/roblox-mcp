@@ -56,10 +56,20 @@ type DriftSourceAnalysis = {
   trailingWhitespaceChars: number;
   terminalNewlineCount: number;
 };
+type ScriptUploadSession = {
+  id: string;
+  instancePath: string;
+  expectedHash?: string;
+  mode: 'set' | 'apply_and_verify';
+  chunks: string[];
+  createdAt: number;
+  updatedAt: number;
+};
 
 export class RobloxStudioTools {
   private client: StudioHttpClient;
   private static readonly DIRECT_WRITE_THRESHOLD = 100_000;
+  private static readonly DEFAULT_UPLOAD_CHUNK_SIZE = 8192;
   private fastEndpointSupport: 'unknown' | 'yes' | 'no' = 'unknown';
   private writeQueue: WriteQueueItem<any>[] = [];
   private writeInFlight: WriteQueueItem<any> | null = null;
@@ -69,6 +79,9 @@ export class RobloxStudioTools {
   private scriptSnapshots: Map<string, ScriptSnapshotRecord> = new Map();
   private scriptSnapshotSeq = 0;
   private readonly maxSnapshots = 250;
+  private scriptUploads: Map<string, ScriptUploadSession> = new Map();
+  private scriptUploadSeq = 0;
+  private readonly maxScriptUploads = 64;
 
   constructor(bridge: BridgeService) {
     this.client = new StudioHttpClient(bridge);
@@ -96,6 +109,48 @@ export class RobloxStudioTools {
     }
 
     return base;
+  }
+
+  private nextUploadId() {
+    this.scriptUploadSeq += 1;
+    return `su_${this.scriptUploadSeq}`;
+  }
+
+  private cleanupExpiredUploads(maxAgeMs: number = 60 * 60 * 1000) {
+    const now = Date.now();
+    const uploads = [...this.scriptUploads.values()].sort((a, b) => a.updatedAt - b.updatedAt);
+    for (const upload of uploads) {
+      if (this.scriptUploads.size <= this.maxScriptUploads && now - upload.updatedAt <= maxAgeMs) {
+        continue;
+      }
+      this.scriptUploads.delete(upload.id);
+    }
+  }
+
+  private async writeSourceViaBridge(instancePath: string, source: string, verify: boolean = false) {
+    const response = await this.client.request('/api/set-script-source', {
+      instancePath,
+      source,
+      preferDirect: false,
+    });
+
+    if (!verify) {
+      return {
+        ...response,
+        verified: false,
+      };
+    }
+
+    const verifyResponse = await this.readFullScriptSource(instancePath);
+    const currentSource = this.extractSource(verifyResponse);
+    if (currentSource !== source) {
+      throw new Error(`Post-write verification failed for ${instancePath} after bridge write fallback.`);
+    }
+
+    return {
+      ...response,
+      verified: true,
+    };
   }
 
   private isTruncatedFullSourceResponse(response: any) {
@@ -355,17 +410,13 @@ export class RobloxStudioTools {
 
   private async fastWriteSource(instancePath: string, source: string, verify: boolean = true) {
     if (this.fastEndpointSupport === 'no') {
-      const fallback = await this.client.request('/api/set-property', {
-        instancePath,
-        propertyName: 'Source',
-        propertyValue: source,
-      });
+      const fallback = await this.writeSourceViaBridge(instancePath, source, verify);
 
       return this.compactScriptWriteResponse({
         ...fallback,
-        method: 'fast-fallback-property',
+        method: 'fast-fallback-bridge',
         fallback: true,
-        message: 'Script source updated via set_property fallback (plugin missing fast endpoint).',
+        message: 'Script source updated via set_script_source bridge fallback (plugin missing fast endpoint).',
       });
     }
 
@@ -388,17 +439,13 @@ export class RobloxStudioTools {
       this.fastEndpointSupport = 'no';
 
       // Backward-compatible fallback for older plugin versions.
-      const fallback = await this.client.request('/api/set-property', {
-        instancePath,
-        propertyName: 'Source',
-        propertyValue: source,
-      });
+      const fallback = await this.writeSourceViaBridge(instancePath, source, verify);
 
       return this.compactScriptWriteResponse({
         ...fallback,
-        method: 'fast-fallback-property',
+        method: 'fast-fallback-bridge',
         fallback: true,
-        message: 'Script source updated via set_property fallback (plugin missing fast endpoint).',
+        message: 'Script source updated via set_script_source bridge fallback (plugin missing fast endpoint).',
       });
     }
   }
@@ -556,6 +603,9 @@ export class RobloxStudioTools {
     if (!instancePath || !propertyName) {
       throw new Error('Instance path and property name are required for set_property');
     }
+    if (propertyName === 'Source') {
+      throw new Error('set_property cannot be used for the Source property. Use set_script_source or chunked script upload tools instead.');
+    }
     const response = await this.client.request('/api/set-property', { 
       instancePath, 
       propertyName, 
@@ -574,6 +624,9 @@ export class RobloxStudioTools {
   async massSetProperty(paths: string[], propertyName: string, propertyValue: any) {
     if (!paths || paths.length === 0 || !propertyName) {
       throw new Error('Paths array and property name are required for mass_set_property');
+    }
+    if (propertyName === 'Source') {
+      throw new Error('mass_set_property cannot be used for the Source property. Use set_script_source or chunked script upload tools instead.');
     }
     const response = await this.client.request('/api/mass-set-property', { 
       paths, 
@@ -817,6 +870,126 @@ export class RobloxStudioTools {
         {
           type: 'text',
           text: JSON.stringify(response, null, 2)
+        }
+      ]
+    };
+  }
+
+  async beginScriptSourceUpload(
+    instancePath: string,
+    expectedHash?: string,
+    mode: 'set' | 'apply_and_verify' = 'set',
+  ) {
+    if (!instancePath) {
+      throw new Error('Instance path is required for begin_script_source_upload');
+    }
+
+    this.cleanupExpiredUploads();
+    const session: ScriptUploadSession = {
+      id: this.nextUploadId(),
+      instancePath,
+      expectedHash,
+      mode,
+      chunks: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    this.scriptUploads.set(session.id, session);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            uploadId: session.id,
+            instancePath,
+            mode,
+            chunkSize: RobloxStudioTools.DEFAULT_UPLOAD_CHUNK_SIZE,
+          }, null, 2)
+        }
+      ]
+    };
+  }
+
+  async appendScriptSourceUploadChunk(uploadId: string, chunk: string, chunkIndex?: number) {
+    if (!uploadId || typeof chunk !== 'string') {
+      throw new Error('uploadId and chunk are required for append_script_source_upload_chunk');
+    }
+
+    const session = this.scriptUploads.get(uploadId);
+    if (!session) {
+      throw new Error(`Upload session not found: ${uploadId}`);
+    }
+    if (typeof chunkIndex === 'number' && chunkIndex !== session.chunks.length) {
+      throw new Error(`Chunk index mismatch for ${uploadId}. Expected ${session.chunks.length} but received ${chunkIndex}.`);
+    }
+
+    session.chunks.push(chunk);
+    session.updatedAt = Date.now();
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            uploadId,
+            chunkIndex: session.chunks.length - 1,
+            totalChunks: session.chunks.length,
+            accumulatedBytes: session.chunks.reduce((sum, part) => sum + Buffer.byteLength(part, 'utf8'), 0),
+          }, null, 2)
+        }
+      ]
+    };
+  }
+
+  async commitScriptSourceUpload(
+    uploadId: string,
+    verifyNeedle?: string,
+    rollbackOnFailure: boolean = true,
+    preferFast: boolean = false,
+  ) {
+    if (!uploadId) {
+      throw new Error('uploadId is required for commit_script_source_upload');
+    }
+
+    const session = this.scriptUploads.get(uploadId);
+    if (!session) {
+      throw new Error(`Upload session not found: ${uploadId}`);
+    }
+
+    const source = session.chunks.join('');
+    this.scriptUploads.delete(uploadId);
+
+    if (session.mode === 'apply_and_verify') {
+      return this.applyAndVerifyScriptSource(
+        session.instancePath,
+        source,
+        session.expectedHash,
+        verifyNeedle,
+        rollbackOnFailure,
+        preferFast,
+      );
+    }
+
+    return this.setScriptSource(session.instancePath, source, session.expectedHash);
+  }
+
+  async cancelScriptSourceUpload(uploadId: string) {
+    if (!uploadId) {
+      throw new Error('uploadId is required for cancel_script_source_upload');
+    }
+
+    const existed = this.scriptUploads.delete(uploadId);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: existed,
+            uploadId,
+          }, null, 2)
         }
       ]
     };

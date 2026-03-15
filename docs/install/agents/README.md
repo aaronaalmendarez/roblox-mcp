@@ -117,8 +117,8 @@ Prefer this order:
 
 1. `batch_script_edits`
 2. `set_script_source_checked`
-3. `set_script_source_fast`
-4. `scripts/push-script-fast.mjs` for very large rewrites
+3. `set_script_source` or `set_script_source_fast`
+4. `begin_script_source_upload` / `commit_script_source_upload`, or `scripts/push-script-fast.mjs`, for very large rewrites
 
 Example:
 
@@ -129,6 +129,8 @@ node scripts/push-script-fast.mjs --instance game.ServerScriptService.Main --fil
 Note:
 
 - Harness push scripts auto-strip UTF-8 BOM before writing to Studio to prevent Luau parse errors (`U+FEFF`).
+- `scripts/push-script-fast.mjs` now uses chunked upload + plugin bridge by default, so large rewrites avoid MCP payload truncation.
+- Do not use `set_property` for `Source`; current builds reject it on purpose.
 
 ## 9) Failure handling
 

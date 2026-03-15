@@ -412,7 +412,7 @@ function init(pluginRef: Plugin) {
 	urlInput.Size = new UDim2(1, 0, 0, 26);
 	urlInput.BackgroundColor3 = C.bg;
 	urlInput.BorderSizePixel = 0;
-	urlInput.Text = "http://localhost:58741";
+	urlInput.Text = "http://localhost:3002";
 	urlInput.TextColor3 = C.label;
 	urlInput.TextSize = 11;
 	urlInput.Font = Enum.Font.GothamMedium;

@@ -5,15 +5,6 @@ const ScriptEditorService = game.GetService("ScriptEditorService");
 
 const { getInstancePath, getInstanceByPath, readScriptSource, splitLines, joinLines } = Utils;
 
-function normalizeEscapes(s: string): string {
-	let result = s;
-	result = result.gsub("\\n", "\n")[0];
-	result = result.gsub("\\t", "\t")[0];
-	result = result.gsub("\\r", "\r")[0];
-	result = result.gsub("\\\\", "\\")[0];
-	return result;
-}
-
 function getScriptSource(requestData: Record<string, unknown>) {
 	const instancePath = requestData.instancePath as string;
 	const startLine = requestData.startLine as number | undefined;
@@ -116,7 +107,7 @@ function setScriptSource(requestData: Record<string, unknown>) {
 		return { error: `Instance is not a script-like object: ${instance.ClassName}` };
 	}
 
-	const sourceToSet = normalizeEscapes(newSource);
+	const sourceToSet = newSource;
 
 	const [updateSuccess, updateResult] = pcall(() => {
 		const oldSourceLength = readScriptSource(instance).size();
@@ -191,8 +182,6 @@ function editScriptLines(requestData: Record<string, unknown>) {
 		return { error: "Instance path, startLine, endLine, and newContent are required" };
 	}
 
-	newContent = normalizeEscapes(newContent);
-
 	const instance = getInstanceByPath(instancePath);
 	if (!instance) return { error: `Instance not found: ${instancePath}` };
 	if (!instance.IsA("LuaSourceContainer")) {
@@ -237,8 +226,6 @@ function insertScriptLines(requestData: Record<string, unknown>) {
 	let newContent = requestData.newContent as string;
 
 	if (!instancePath || !newContent) return { error: "Instance path and newContent are required" };
-
-	newContent = normalizeEscapes(newContent);
 
 	const instance = getInstanceByPath(instancePath);
 	if (!instance) return { error: `Instance not found: ${instancePath}` };
