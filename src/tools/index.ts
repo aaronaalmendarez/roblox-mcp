@@ -44,6 +44,18 @@ type WriteQueueItem<T> = {
   createdAt: number;
   cancelled: boolean;
 };
+type DriftSourceAnalysis = {
+  rawHash: string;
+  rawLength: number;
+  lineCount: number;
+  normalizedHash: string;
+  normalizedLength: number;
+  strippedBom: boolean;
+  hadCarriageReturns: boolean;
+  trailingWhitespaceLines: number;
+  trailingWhitespaceChars: number;
+  terminalNewlineCount: number;
+};
 
 export class RobloxStudioTools {
   private client: StudioHttpClient;
@@ -88,6 +100,85 @@ export class RobloxStudioTools {
 
   private normalizeSource(source: string) {
     return source.replace(/\r\n/g, '\n');
+  }
+
+  private stripUtf8Bom(source: string) {
+    return source.charCodeAt(0) === 0xfeff ? source.slice(1) : source;
+  }
+
+  private normalizeAllLineEndings(source: string) {
+    return source.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  }
+
+  private countLines(source: string) {
+    if (source.length === 0) {
+      return 0;
+    }
+    return this.normalizeAllLineEndings(source).split('\n').length;
+  }
+
+  private analyzeDriftSource(source: string): DriftSourceAnalysis {
+    const rawHash = this.hashSource(source);
+    const rawLength = source.length;
+    const lineCount = this.countLines(source);
+    const strippedBomSource = this.stripUtf8Bom(source);
+    const strippedBom = strippedBomSource.length !== source.length;
+    const eolNormalizedSource = this.normalizeAllLineEndings(strippedBomSource);
+    const hadCarriageReturns = /\r/.test(strippedBomSource);
+
+    let trailingWhitespaceLines = 0;
+    let trailingWhitespaceChars = 0;
+    const trimmedLines = eolNormalizedSource.split('\n').map((line) => {
+      const trimmed = line.replace(/[ \t]+$/g, '');
+      if (trimmed.length !== line.length) {
+        trailingWhitespaceLines += 1;
+        trailingWhitespaceChars += line.length - trimmed.length;
+      }
+      return trimmed;
+    });
+
+    let normalizedSource = trimmedLines.join('\n');
+    const trailingNewlines = normalizedSource.match(/\n+$/);
+    const terminalNewlineCount = trailingNewlines ? trailingNewlines[0].length : 0;
+    if (terminalNewlineCount > 0) {
+      normalizedSource = normalizedSource.slice(0, -terminalNewlineCount);
+    }
+
+    return {
+      rawHash,
+      rawLength,
+      lineCount,
+      normalizedHash: this.hashSource(normalizedSource),
+      normalizedLength: normalizedSource.length,
+      strippedBom,
+      hadCarriageReturns,
+      trailingWhitespaceLines,
+      trailingWhitespaceChars,
+      terminalNewlineCount,
+    };
+  }
+
+  private detectFormattingDifferences(local: DriftSourceAnalysis, studio: DriftSourceAnalysis) {
+    const differences: string[] = [];
+    if (local.strippedBom !== studio.strippedBom) {
+      differences.push('bom');
+    }
+    if (local.hadCarriageReturns !== studio.hadCarriageReturns) {
+      differences.push('line-endings');
+    }
+    if (
+      local.trailingWhitespaceLines !== studio.trailingWhitespaceLines ||
+      local.trailingWhitespaceChars !== studio.trailingWhitespaceChars
+    ) {
+      differences.push('trailing-whitespace');
+    }
+    if (local.terminalNewlineCount !== studio.terminalNewlineCount) {
+      differences.push('trailing-newline');
+    }
+    if (differences.length === 0) {
+      differences.push('formatting');
+    }
+    return differences;
   }
 
   private nextSnapshotId() {
@@ -938,24 +1029,43 @@ export class RobloxStudioTools {
         continue;
       }
 
-      const normalizedLocal = normalizeLineEndings ? this.normalizeSource(localSource) : localSource;
-      const normalizedStudio = normalizeLineEndings ? this.normalizeSource(studioSource) : studioSource;
-      const localHash = this.hashSource(normalizedLocal);
-      const studioHash = this.hashSource(normalizedStudio);
+      const localAnalysis = this.analyzeDriftSource(localSource);
+      const studioAnalysis = this.analyzeDriftSource(studioSource);
+      const compareNormalized = normalizeLineEndings;
+      const localHash = compareNormalized ? localAnalysis.normalizedHash : localAnalysis.rawHash;
+      const studioHash = compareNormalized ? studioAnalysis.normalizedHash : studioAnalysis.rawHash;
+      const formattingOnly = compareNormalized &&
+        localAnalysis.rawHash !== studioAnalysis.rawHash &&
+        localAnalysis.normalizedHash === studioAnalysis.normalizedHash;
+
       results.push({
         instancePath,
         localFile,
         status: localHash === studioHash ? 'in-sync' : 'drift',
+        comparisonMode: compareNormalized ? 'canonical-text' : 'raw',
+        formattingOnly,
+        formattingDifferences: formattingOnly ? this.detectFormattingDifferences(localAnalysis, studioAnalysis) : [],
         localHash,
         studioHash,
-        localLength: normalizedLocal.length,
-        studioLength: normalizedStudio.length,
+        localLength: compareNormalized ? localAnalysis.normalizedLength : localAnalysis.rawLength,
+        studioLength: compareNormalized ? studioAnalysis.normalizedLength : studioAnalysis.rawLength,
+        localLineCount: localAnalysis.lineCount,
+        studioLineCount: studioAnalysis.lineCount,
+        rawLocalHash: localAnalysis.rawHash,
+        rawStudioHash: studioAnalysis.rawHash,
+        rawLocalLength: localAnalysis.rawLength,
+        rawStudioLength: studioAnalysis.rawLength,
+        normalizedLocalHash: localAnalysis.normalizedHash,
+        normalizedStudioHash: studioAnalysis.normalizedHash,
+        normalizedLocalLength: localAnalysis.normalizedLength,
+        normalizedStudioLength: studioAnalysis.normalizedLength,
       });
     }
 
     const summary = {
       total: results.length,
       inSync: results.filter((x) => x.status === 'in-sync').length,
+      formattingOnly: results.filter((x) => x.formattingOnly).length,
       drift: results.filter((x) => x.status === 'drift').length,
       failures: results.filter((x) => x.status !== 'in-sync' && x.status !== 'drift').length,
     };

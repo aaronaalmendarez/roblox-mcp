@@ -121,7 +121,7 @@ class RobloxStudioMCPServer {
           },
           {
             name: 'check_script_drift',
-            description: 'Compare local files against Studio script source hashes to detect drift.',
+            description: 'Compare local files against Studio script source to detect drift. By default this ignores formatting-only differences such as CRLF vs LF, BOM, trailing whitespace, and trailing final newlines.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -138,6 +138,7 @@ class RobloxStudioMCPServer {
                 },
                 normalizeLineEndings: {
                   type: 'boolean',
+                  description: 'When true (default), compare canonical text and ignore formatting-only differences such as line endings, BOM, trailing whitespace, and trailing final newlines. Set false for raw byte comparison.',
                   default: true
                 }
               },

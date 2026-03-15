@@ -24,7 +24,7 @@ function parseArgs(argv) {
     }
   }
   if (mappings.length === 0) {
-    throw new Error('Usage: node scripts/check-drift.mjs --map game.ServerScriptService.Main=blueprint-v1/src/ServerScriptService/Main.server.luau [--map ...]');
+    throw new Error('Usage: node scripts/check-drift.mjs --map game.ServerScriptService.Main=blueprint-v1/src/ServerScriptService/Main.server.luau [--map ...] [--no-normalize-eol]');
   }
   return { mappings, normalizeLineEndings };
 }
