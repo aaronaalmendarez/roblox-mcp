@@ -153,7 +153,7 @@ node dist/index.js
 npm start
 ```
 
-The server runs on `localhost:3002`.
+The server runs on `localhost:58741` (auto-discovery range `58741-58745`, with a legacy `3002` listener when available).
 
 ### Step 8: Connect in Roblox Studio
 
@@ -167,7 +167,7 @@ The server runs on `localhost:3002`.
 
 ```bash
 # Check server health
-curl http://localhost:3002/health
+curl http://localhost:58741/health
 
 # Expected response:
 # {"status":"ok","pluginConnected":true,"mcpServerActive":true,...}
@@ -203,7 +203,7 @@ After completing installation, verify each item:
 - [ ] HTTP Requests enabled in Studio
 - [ ] MCP server running (`node dist/index.js`)
 - [ ] Plugin shows green (connected) in Studio
-- [ ] `curl http://localhost:3002/health` returns `pluginConnected: true`
+- [ ] `curl http://localhost:58741/health` returns `pluginConnected: true`
 - [ ] MCP client configured (Claude Code, Cursor, etc.)
 - [ ] Luau CLI installed (`npm run luau:install`)
 - [ ] (Optional) Rojo installed for Blueprint V1
@@ -215,6 +215,8 @@ After completing installation, verify each item:
 An MCP (Model Context Protocol) server that connects AI assistants to Roblox Studio. You can:
 
 - Read/write Luau scripts in Studio
+- Execute arbitrary Luau in Studio edit context (`execute_luau`)
+- Start/poll/stop automated playtests (`start_playtest`, `get_playtest_output`, `stop_playtest`)
 - Create, delete, modify instances
 - Get/set properties and attributes
 - Sync local files with Studio via Rojo (Blueprint V1)
@@ -226,7 +228,7 @@ An MCP (Model Context Protocol) server that connects AI assistants to Roblox Stu
 ```
 ┌─────────────┐      stdio       ┌─────────────────┐      HTTP       ┌─────────────────┐
 │   AI Agent  │ ◄──────────────► │   MCP Server    │ ◄─────────────► │  Studio Plugin  │
-│  (Claude)   │                  │  localhost:3002 │                 │   (Luau)        │
+│  (Claude)   │                  │  localhost:58741 │                 │   (Luau)        │
 └─────────────┘                  └────────┬────────┘                 └────────┬────────┘
                                           │                                   │
                                           │                                   │
@@ -238,7 +240,7 @@ An MCP (Model Context Protocol) server that connects AI assistants to Roblox Stu
 ```
 
 **Key Points:**
-- MCP Server runs on `localhost:3002`
+- MCP Server defaults to `localhost:58741` (auto-discovery range `58741-58745`)
 - Studio Plugin polls server every 500ms
 - Rojo syncs local `.luau` files to Studio on `localhost:34872`
 - Everything is LOCAL - no external servers
@@ -300,7 +302,7 @@ Or use npm:
 npm start
 ```
 
-The server should now be running on `localhost:3002`.
+The server should now be running on `localhost:58741`.
 
 ### Step 4: Verify Plugin Connection
 
@@ -317,7 +319,7 @@ Click the button to toggle connection if needed.
 ### 1. Check Server Health
 
 ```bash
-curl http://localhost:3002/health
+curl http://localhost:58741/health
 ```
 
 **Expected Response:**
@@ -385,11 +387,15 @@ blueprint-v1/
 
 ### File Naming Convention
 
-| File Suffix | Script Type | Example |
-|-------------|-------------|---------|
-| `.server.luau` | Script (server-side) | `Main.server.luau` |
-| `.client.luau` | LocalScript (client-side) | `GUI.client.luau` |
-| `.module.luau` | ModuleScript | `Config.module.luau` |
+| File Suffix | Script Type | Studio Instance Name |
+|-------------|-------------|----------------------|
+| `.server.luau` | Script (server-side) | `Name` (e.g. `Main.server.luau` → `Main`) |
+| `.client.luau` | LocalScript (client-side) | `Name` (e.g. `GUI.client.luau` → `GUI`) |
+| `.luau` or `.lua` | ModuleScript | `Name` (e.g. `Config.luau` → `Config`) |
+
+> ⚠️ **Do NOT use `.module.luau`** — Rojo does NOT strip `.module` from the name.
+> A file named `Config.module.luau` creates a ModuleScript called `Config.module`, not `Config`.
+> Use `Config.luau` for ModuleScripts.
 
 ### Blueprint Setup Steps
 
@@ -508,12 +514,27 @@ done
 
 # 6. Verify
 npm run place:status
-
-# 7. Start Rojo
-rojo serve blueprint-v1/places/<slug>/default.project.json
 ```
 
-**Step 4: Start Rojo**
+**Step 4: Install & Connect the Rojo Studio Plugin (REQUIRED)**
+
+Rojo requires a companion plugin installed in Roblox Studio. Without it, `rojo serve` runs but **nothing syncs**.
+
+**Install (one-time):**
+1. Open Roblox Studio
+2. Go to **Plugins → Manage Plugins** (or the Marketplace toolbar button)
+3. Search for **"Rojo"** and install the official plugin by the Roblox community
+   - Or install manually: download `rojo.rbxm` from https://github.com/rojo-rbx/rojo/releases and copy to `%LOCALAPPDATA%\Roblox\Plugins\`
+
+**Connect each session:**
+1. Start `rojo serve` in the terminal first
+2. In Studio, click the **Rojo** button in the Plugins toolbar
+3. Click **Connect** — the plugin connects to `localhost:34872`
+4. ✅ You should see: `Connected to Rojo server`
+
+> Studio must connect to Rojo **every time you open a new session**. Once connected, all local `.luau` file edits sync to Studio automatically in real-time.
+
+**Step 5: Start Rojo Server**
 
 ```bash
 rojo serve blueprint-v1/places/<slug>/default.project.json
@@ -521,7 +542,7 @@ rojo serve blueprint-v1/places/<slug>/default.project.json
 
 Rojo runs on `localhost:34872` by default.
 
-**Step 5: Start Property Watcher (optional)**
+**Step 6: Start Property Watcher (optional)**
 
 ```bash
 npm run blueprint:watch
@@ -549,7 +570,7 @@ This starts:
 - Property Watcher
 - Reverse Sync
 
-**Note:** This will fail if port 3002 or 34872 is already in use. Kill existing processes first.
+**Note:** This will fail if ports `58741-58745` (or legacy `3002`) or `34872` are already in use. Kill existing processes first.
 
 ### ⚠️ CRITICAL: Always Edit Local Files, Then Push to Studio
 
@@ -647,7 +668,7 @@ done
 
 - [ ] Local file edited and saved
 - [ ] `npm run luau:lint` passes with `findings=0`
-- [ ] MCP server running on `localhost:3002`
+- [ ] MCP server running on `localhost:58741`
 - [ ] Studio plugin connected (green indicator)
 - [ ] Push command executed successfully
 
@@ -711,6 +732,15 @@ done
 | `delete_script_lines` | Delete line range | `instancePath`, `startLine`, `endLine` |
 | `batch_script_edits` | Atomic multi-edit | `edits[]` with path, operations |
 | `apply_and_verify_script_source` | Apply → verify → rollback | `instancePath`, `source` |
+
+### Execute & Playtest (4 tools)
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `execute_luau` | Execute arbitrary Luau in Studio edit context | `code` |
+| `start_playtest` | Start Play or Run mode and begin log capture | `mode` (`play` or `run`) |
+| `get_playtest_output` | Poll playtest logs/output while running | (no params) |
+| `stop_playtest` | Stop active playtest and return final output | (no params) |
 
 ### Snapshots & Safety (4 tools)
 
@@ -818,12 +848,21 @@ done
 2. set_script_source(instancePath: "game.ServerScriptService.MyScript", source: <code>)
 ```
 
-**Option B: Via Blueprint V1 (recommended)**
+**Option B: Via Blueprint V1 (RECOMMENDED — use this)**
 ```
 1. Create file: blueprint-v1/places/<slug>/src/ServerScriptService/MyScript.server.luau
 2. Write Luau code to file
-3. Rojo auto-syncs to Studio
+3. Rojo auto-syncs to Studio IMMEDIATELY — no manual push needed
 ```
+
+> ✅ **Rojo syncs automatically.** When `rojo serve` is running and the Studio Rojo plugin
+> is connected, any file you write or edit locally appears in Studio within seconds.
+> You do NOT need to call `set_script_source` via MCP for Blueprint V1 scripts.
+
+> ⚠️ **Do NOT create script instances via MCP `execute_luau` or `create_object` when Rojo
+> is active.** Rojo owns the instance tree for paths mapped in `default.project.json`.
+> Creating instances manually causes duplicates. Use MCP `execute_luau`/`create_object`
+> ONLY for geometry (Parts, Folders, RemoteEvents) that Rojo does not manage.
 
 ### Workflow 3: Edit Existing Script
 
@@ -880,18 +919,18 @@ ls "%LOCALAPPDATA%\Roblox\Plugins\MCPPlugin.rbxmx"
 # 3. Restart Studio completely (not just the place)
 ```
 
-### Problem: `EADDRINUSE: address already in use 0.0.0.0:3002`
+### Problem: `EADDRINUSE: address already in use 0.0.0.0:58741`
 
 **Cause:** MCP server already running
 
 **Solution:**
 ```bash
 # Windows
-netstat -ano | findstr :3002
+netstat -ano | findstr :58741
 taskkill //PID <pid> //F
 
 # macOS/Linux
-lsof -i :3002
+lsof -i :58741
 kill -9 <pid>
 ```
 
@@ -1034,7 +1073,10 @@ rblxMCP/
 ├── src/                           # TypeScript source
 ├── studio-plugin/
 │   ├── MCPPlugin.rbxmx           # Studio plugin (copy to Plugins folder)
-│   └── plugin.server.luau        # Plugin source
+|-- studio-plugin/src/                      # roblox-ts plugin source (v2.3.0 rewrite)
+|   |-- modules/                            # Domain handlers (Query/Property/Instance/Script/Metadata/Test)
+|   `-- server/index.server.ts
+`-- studio-plugin/default.project.json      # Plugin Rojo project
 ├── scripts/                       # CLI utilities
 │   ├── places.mjs                # Place management
 │   ├── sync-roblox-properties.mjs
@@ -1070,7 +1112,7 @@ rblxMCP/
 ```bash
 npm run blueprint:doctor  # Check connectivity
 npm run place:status      # Confirm correct place
-curl http://localhost:3002/health  # Quick health check
+curl http://localhost:58741/health  # Quick health check
 ```
 
 ### 2. Use Hash-Checked Writes for Scripts
@@ -1101,15 +1143,18 @@ For multiple changes, prefer batch tools:
 
 For anything more than quick prototypes:
 - Keep `.luau` files in `blueprint-v1/places/<slug>/src/`
-- Let Rojo handle sync
+- Run `rojo serve <slug>/default.project.json` — Rojo auto-pushes all file changes to Studio
+- Connect Studio to Rojo via the Rojo plugin (Plugins toolbar → Connect)
 - Use `instances.json` for non-script properties
+- Use MCP tools only for geometry/instances NOT managed by Rojo (Parts, RemoteEvents, etc.)
+- Regenerate `sourcemap.json` after adding new scripts: `rojo sourcemap ... --output sourcemap.json`
 
 ### 6. Handle Port Conflicts Gracefully
 
 Before starting services, check if ports are in use:
 ```bash
 # Windows
-netstat -ano | findstr ":3002 :34872"
+netstat -ano | findstr ":58741 :34872"
 
 # Kill if needed
 taskkill //PID <pid> //F
@@ -1123,24 +1168,39 @@ Always call `get_script_source` before editing to understand current state and g
 
 ## ⚠️ CRITICAL: Luau Lint (Always Run After Writing Code)
 
-**Luau lint is MANDATORY for all code changes.** It catches type errors, unused variables, and potential bugs before they cause runtime issues.
+**Luau lint is MANDATORY for all code changes.** The linter (`luau-lsp`) has full Roblox
+type stubs built-in — `Player`, `BasePart`, `Vector3`, `RemoteEvent`, etc. all resolve
+correctly. Do NOT use `any` type annotations to silence lint; fix the real issue instead.
 
-### First-Time Setup
+### Setup (One-Time)
 
+1. Download `luau-lsp-win64.zip` from https://github.com/JohnnyMorganz/luau-lsp/releases/latest
+2. Extract `luau-lsp.exe` to `.tools/luau-lsp/luau-lsp.exe`
+3. Generate Rojo sourcemap:
 ```bash
-npm run luau:install
+rojo sourcemap blueprint-v1/places/<slug>/default.project.json --output sourcemap.json
 ```
 
-This downloads the official Luau CLI (luau-analyze) to `.tools/luau/`.
+> The `luau-lint.mjs` script auto-detects `.tools/luau-lsp/luau-lsp.exe` and uses
+> `sourcemap.json` from the project root for DataModel-aware type resolution.
 
 ### Run Lint
 
 ```bash
-# Standard lint
+# Standard lint (run after every code change)
 npm run luau:lint
 
-# Strict mode (fails on any findings - use in CI)
+# Strict mode (fails on any findings — use in CI)
 npm run luau:lint:strict
+```
+
+### Expected Clean Output
+
+```
+[context] Place1 (125175608517936) [place1-2]
+[luau-lint] files=4 analyzer=.tools/luau-lsp/luau-lsp.exe
+[luau-lint] sourcemap=sourcemap.json
+[luau-lint] findings=0
 ```
 
 ### Lint Output Example
@@ -1216,7 +1276,7 @@ The lint script automatically suppresses warnings for these Roblox globals:
 npm run build && node dist/index.js &
 
 # Check health
-curl http://localhost:3002/health
+curl http://localhost:58741/health
 
 # Setup Blueprint
 npm run place:detect
@@ -1334,5 +1394,8 @@ Then set source:
 
 ---
 
-*Last updated: 2025-02-11*
-*Version: 1.10.0*
+*Last updated: 2026-02-13*
+*Version: 2.3.0*
+
+
+
