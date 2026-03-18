@@ -357,7 +357,42 @@ npm run blueprint:sync           # Property sync → Studio
 npm run blueprint:watch          # Continuous sync
 npm run blueprint:reverse-sync   # Pull Studio → local
 npm run drift:check              # Detect file divergence
-npm run luau:lint                # Static analysis
+npm run luau:lint                # Static analysis (requires luau-lsp, see below)
+```
+
+### Luau Lint Setup (luau-lsp)
+
+`npm run luau:lint` uses [luau-lsp](https://github.com/JohnnyMorganz/luau-lsp) which ships **full Roblox type stubs** — `Player`, `BasePart`, `Vector3`, `RemoteEvent`, etc. all resolve correctly under `--!strict`.
+
+**One-time setup:**
+
+Option A — use the bundled binary (already in this repo, v1.63.0 Windows x64):
+```powershell
+Expand-Archive tools\luau-lsp\luau-lsp-win64.zip -DestinationPath .tools\luau-lsp -Force
+```
+
+Option B — download the latest release for your platform:
+- 👉 https://github.com/JohnnyMorganz/luau-lsp/releases/latest
+- Download `luau-lsp-win64.zip` (Windows), `luau-lsp-macos.zip` (macOS), or `luau-lsp-linux.zip` (Linux)
+- Extract `luau-lsp[.exe]` → `.tools/luau-lsp/luau-lsp.exe`
+
+Then generate the Rojo sourcemap:
+```bash
+rojo sourcemap blueprint-v1/places/<slug>/default.project.json --output sourcemap.json
+```
+
+**Run:**
+```bash
+npm run luau:lint          # findings=0 is the goal
+npm run luau:lint:strict   # exits non-zero if any findings (use in CI)
+```
+
+**Expected clean output:**
+```
+[context] Place1 (125175608517936) [place1-2]
+[luau-lint] files=4 analyzer=.tools/luau-lsp/luau-lsp.exe
+[luau-lint] sourcemap=sourcemap.json
+[luau-lint] findings=0
 ```
 
 > **Deep dive:** [docs/BLUEPRINT_V1.md](docs/BLUEPRINT_V1.md)
