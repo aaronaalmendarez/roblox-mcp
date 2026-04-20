@@ -1520,27 +1520,44 @@ class RobloxStudioMCPServer {
     const maxPort = basePort + 4;
     const host = process.env.ROBLOX_STUDIO_HOST || '0.0.0.0';
     const httpServer = createHttpServer(this.tools, this.bridge);
+    const listenWithFallback = (
+      app: ReturnType<typeof createHttpServer>,
+      port: number,
+      listeningMessage: string
+    ) =>
+      new Promise<void>((resolve, reject) => {
+        const listener = app.listen(port, host);
+
+        const cleanup = () => {
+          listener.removeListener('error', onError);
+          listener.removeListener('listening', onListening);
+        };
+
+        const onError = (err: NodeJS.ErrnoException) => {
+          cleanup();
+          try {
+            listener.close();
+          } catch {
+            // Ignore close errors from a failed listen attempt.
+          }
+          reject(err);
+        };
+
+        const onListening = () => {
+          cleanup();
+          console.error(listeningMessage);
+          resolve();
+        };
+
+        listener.once('error', onError);
+        listener.once('listening', onListening);
+      });
 
     let boundPort = 0;
     for (let port = basePort; port <= maxPort; port++) {
       try {
-        await new Promise<void>((resolve, reject) => {
-          const onError = (err: NodeJS.ErrnoException) => {
-            if (err.code === 'EADDRINUSE') {
-              httpServer.removeListener('error', onError);
-              reject(err);
-            } else {
-              reject(err);
-            }
-          };
-          httpServer.once('error', onError);
-          httpServer.listen(port, host, () => {
-            httpServer.removeListener('error', onError);
-            boundPort = port;
-            console.error(`HTTP server listening on ${host}:${port} for Studio plugin`);
-            resolve();
-          });
-        });
+        await listenWithFallback(httpServer, port, `HTTP server listening on ${host}:${port} for Studio plugin`);
+        boundPort = port;
         break;
       } catch (err: any) {
         if (err.code === 'EADDRINUSE') {
@@ -1560,22 +1577,11 @@ class RobloxStudioMCPServer {
       const legacy = createHttpServer(this.tools, this.bridge);
       legacyServer = legacy;
       try {
-        await new Promise<void>((resolve, reject) => {
-          const onError = (err: NodeJS.ErrnoException) => {
-            if (err.code === 'EADDRINUSE') {
-              legacy.removeListener('error', onError);
-              reject(err);
-            } else {
-              reject(err);
-            }
-          };
-          legacy.once('error', onError);
-          legacy.listen(LEGACY_PORT, host, () => {
-            legacy.removeListener('error', onError);
-            console.error(`Legacy HTTP server also listening on ${host}:${LEGACY_PORT} for old plugins`);
-            resolve();
-          });
-        });
+        await listenWithFallback(
+          legacy,
+          LEGACY_PORT,
+          `Legacy HTTP server also listening on ${host}:${LEGACY_PORT} for old plugins`
+        );
         (legacy as any).setMCPServerActive(true);
       } catch {
         console.error(`Legacy port ${LEGACY_PORT} in use, skipping backward-compat listener`);

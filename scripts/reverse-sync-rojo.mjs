@@ -68,7 +68,7 @@ function toPosixSegments(relativePath) {
 function scriptNameFromFile(filename) {
   const ext = path.extname(filename);
   const base = path.basename(filename, ext);
-  return base.replace(/\.(server|client)$/i, '');
+  return base.replace(/\.(server|client|module)$/i, '');
 }
 
 async function isScriptFile(filePath) {

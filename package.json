@@ -32,6 +32,7 @@
     "luau:install": "node scripts/install-luau-cli.mjs",
     "luau:lint": "node scripts/luau-lint.mjs",
     "luau:lint:strict": "node scripts/luau-lint.mjs --strict --fail-on-findings",
+    "transcribe:whisper": "node scripts/transcribe-whisper.mjs",
     "dev:cockpit": "node scripts/dev-cockpit.mjs",
     "dev:studio": "node scripts/dev-studio.mjs --with-rojo --with-watch --with-reverse",
     "telemetry:once": "node scripts/telemetry-dashboard.mjs --once",
