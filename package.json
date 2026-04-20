@@ -35,6 +35,7 @@
     "transcribe:whisper": "node scripts/transcribe-whisper.mjs",
     "dev:cockpit": "node scripts/dev-cockpit.mjs",
     "dev:studio": "node scripts/dev-studio.mjs --with-rojo --with-watch --with-reverse",
+    "studio": "node scripts/studio-cli.mjs",
     "telemetry:once": "node scripts/telemetry-dashboard.mjs --once",
     "telemetry:watch": "node scripts/telemetry-dashboard.mjs",
     "test:live": "node scripts/live-smoke.mjs",
