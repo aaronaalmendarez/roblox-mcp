@@ -11,7 +11,7 @@
 
 **Claude** · **Gemini** · **Codex** · **OpenCode** · *any MCP client*
 
-[Quick Start](#-quick-start) · [Features](#-features) · [Tools](#-tool-reference) · [Client Setup](#-client-setup) · [Docs](#-docs)
+[Quick Start](#-quick-start) · [Studio CLI](#-the-studio-cli) · [Features](#-features) · [Tools](#-tool-reference) · [Client Setup](#-client-setup) · [Docs](#-docs)
 
 </div>
 
@@ -121,6 +121,72 @@ npm run build:plugin
 - Smart plugin polling: hot → active → idle intervals
 - Drift checks ignore formatting-only differences by default and report both raw and normalized hashes
 - Atomic **apply → verify → rollback** pipeline
+
+---
+
+## 🎨 The Studio CLI
+
+One command to rule them all. A zero-dependency, cross-terminal orchestrator for your entire Roblox workflow.
+
+```
+    ____  ____  ____________  ______________  _____
+   / __ \/ __ )/ ____/ __ \/  _/ ____/ __ \/ ___/
+  / /_/ / __  / /   / / / // // /   / / / /\__ \
+ / _, _/ /_/ / /___/ /_/ // // /___/ /_/ /___/ / 
+/_/ |_/_____/\____/_____/___/\____/_____//____/
+```
+
+```bash
+# One command starts everything
+npm run studio -- dev
+
+# Or pick your services
+npm run studio -- mcp              # MCP server only
+npm run studio -- serve            # Rojo server only
+npm run studio -- dev --verbose    # See all process output
+```
+
+### What it does
+
+| Feature | Description |
+| :------ | :---------- |
+| **Process Orchestration** | Spawns MCP + Rojo + Watchers + Reverse Sync with a single command |
+| **PID Tracking** | Every process gets a PID file in `.studio-cli/pids/` — no orphaned `node.exe` processes |
+| **Cross-Platform Kill** | `taskkill /T` on Windows, `SIGTERM` on Unix — tree-wide shutdown, no zombies |
+| **Log Capture** | Background processes write timestamped logs to `.studio-cli/logs/` |
+| **Health Checks** | Auto-verifies MCP (HTTP) and Rojo (TCP socket) before reporting "ready" |
+| **Place Context** | Auto-resolves active place, detected Studio place, or legacy fallback |
+| **Beautiful UI** | ANSI boxes, spinners, tables, and status indicators — works in any terminal |
+
+### Commands
+
+```bash
+studio dev              # Full environment (MCP + Rojo + Watch + Reverse)
+studio serve            # Rojo server only
+studio mcp              # MCP server only
+studio sync             # Blueprint property sync once
+studio watch            # Property file watcher
+studio build            # Build .rbxl via Rojo
+studio lint             # Luau lint
+studio place list       # Places table with active marker
+studio place status     # Resolved context box
+studio place use <key>  # Switch active place
+studio place detect     # Auto-register current Studio place
+studio status           # System dashboard with health checks
+studio stop [name]      # Kill tracked process(es)
+studio transcribe       # Whisper transcription
+studio doctor           # Blueprint doctor
+studio version          # Version + logo
+```
+
+### Global Flags
+
+```bash
+--place <key>     # Target place (slug / id / name)
+--verbose         # Show process output
+--json            # Machine-readable output
+--dry-run         # Preview changes without applying
+```
 
 ---
 
@@ -427,6 +493,12 @@ npm run blueprint:reverse-sync
 Or use the **one-command launcher** that does steps 3-5 automatically:
 
 ```powershell
+npm run studio -- dev --place <slug>
+```
+
+Or the legacy orchestrator:
+
+```powershell
 npm run dev:studio -- --place <slug>
 ```
 
@@ -577,7 +649,7 @@ This file contains `lastLocalHash` and `lastStudioHash` per script. If you need 
 | Module path mismatch               | File in wrong `src/` subdirectory           | Match directory to Roblox service name exactly        |
 | HTTP 403 from plugin               | HTTP requests disabled in Studio            | Game Settings → Security → Allow HTTP Requests        |
 | Stale `.active-place.json`         | Switched Studio places without re-detecting | `npm run place:detect`                                |
-| `ECONNREFUSED :3002`               | MCP server not running                      | `node dist/index.js` or `npm run dev:studio`          |
+| `ECONNREFUSED :3002`               | MCP server not running                      | `npm run studio -- dev` or `npm run dev:studio`       |
 | Reverse-sync shows 0 tracked       | No scripts match Rojo mappings              | Verify files exist in resolved `src/` path            |
 | Rojo sync not updating Studio      | Rojo serving wrong project file             | Check `npm run place:status` for correct project path |
 | Lint says "luau-analyze not found" | Luau CLI not installed                      | `npm run luau:install`                                |
@@ -587,13 +659,19 @@ This file contains `lastLocalHash` and `lastStudioHash` per script. If you need 
 
 ### 8. One-Command Dev Launcher
 
-The `dev:studio` script is the recommended daily driver:
+The **Studio CLI** is the recommended daily driver:
+
+```powershell
+npm run studio -- dev --place place2
+```
+
+Or use the legacy orchestrator:
 
 ```powershell
 npm run dev:studio -- --place place2
 ```
 
-This starts **all four services** in parallel:
+Both start **all four services** in parallel:
 
 | Service              | What It Does                                                 |
 | :------------------- | :----------------------------------------------------------- |
@@ -602,14 +680,24 @@ This starts **all four services** in parallel:
 | **Property watcher** | Continuous `blueprint:watch` for non-script sync             |
 | **Reverse sync**     | Guarded Studio → local pull                                  |
 
-Output on success:
+The CLI adds PID tracking, health checks, log capture, and a beautiful terminal UI:
+
 ```
-Starting studio dev orchestrator...
-Context: Place2 (136131439760483) [place2]
-Orchestrator active. Press Ctrl+C to stop all processes.
+✓ Resolved: Place2 [place2]
+✓ MCP server listening on port 3002
+✓ Rojo server listening on port 34872
+✓ Property watcher active
+✓ Reverse sync active
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Dev Environment                                                    │
+│  Project:  blueprint-v1\places\place2\default.project.json           │
+│  Mode:     place                                                    │
+│  Studio:   ● Press Ctrl+C to stop all                              │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-> **Flags:** `--with-rojo`, `--with-watch`, `--with-reverse` are all enabled by the default `dev:studio` npm script. Use `node scripts/dev-studio.mjs --place place2 --with-rojo` to select individually.
+> **CLI flags:** `--no-rojo`, `--no-watch`, `--no-reverse` to disable individual services. `--verbose` to see process output.
 
 ---
 
@@ -673,8 +761,11 @@ npm run place:detect
 # → ✔ Detected place: Place2 (136131439760483), slug: place2
 
 # Daily: start everything
-npm run dev:studio -- --place place2
+npm run studio -- dev --place place2
 # → MCP server, Rojo, property watcher, and reverse sync all running
+
+# Or the legacy orchestrator:
+npm run dev:studio -- --place place2
 
 # Or manually:
 rojo serve blueprint-v1/places/place2/default.project.json
