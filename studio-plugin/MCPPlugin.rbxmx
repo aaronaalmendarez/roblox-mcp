@@ -204,24 +204,12 @@ local function pollForRequests(connIndex)
 				local _condition_1 = conn.mcpWaitStartTime
 				if _condition_1 == nil then
 					_condition_1 = tick()
-					end
-					local elapsed = _exp - _condition_1
-					el.troubleshootLabel.Visible = elapsed > 8
-					if elapsed > 3 and elapsed % 5 < conn.pollInterval then
-						task.spawn(function()
-							local discovered = discoverPort()
-							if discovered ~= nil and discovered ~= conn.port then
-								conn.port = discovered
-								conn.serverUrl = `http://localhost:{discovered}`
-								if connIndex == State.getActiveTabIndex() then
-									UI.getElements().urlInput.Text = conn.serverUrl
-								end
-							end
-						end)
-					end
-					UI.startPulseAnimation()
 				end
+				local elapsed = _exp - _condition_1
+				el.troubleshootLabel.Visible = elapsed > 8
+				UI.startPulseAnimation()
 			end
+		end
 		if data.request and mcpConnected then
 			task.spawn(function()
 				local ok, response = pcall(function()
@@ -238,25 +226,11 @@ local function pollForRequests(connIndex)
 		end
 	elseif conn.isActive then
 		conn.consecutiveFailures += 1
-			if conn.consecutiveFailures > 1 then
-				conn.currentRetryDelay = math.min(conn.currentRetryDelay * conn.retryBackoffMultiplier, conn.maxRetryDelay)
-			end
-			if conn.consecutiveFailures == 5 or conn.consecutiveFailures % 20 == 0 then
-				task.spawn(function()
-					local discovered = discoverPort()
-					if discovered ~= nil and discovered ~= conn.port then
-						conn.port = discovered
-						conn.serverUrl = `http://localhost:{discovered}`
-						conn.consecutiveFailures = 0
-						conn.currentRetryDelay = 0.5
-						if connIndex == State.getActiveTabIndex() then
-							UI.getElements().urlInput.Text = conn.serverUrl
-						end
-					end
-				end)
-			end
-			if connIndex == State.getActiveTabIndex() then
-				local el = ui
+		if conn.consecutiveFailures > 1 then
+			conn.currentRetryDelay = math.min(conn.currentRetryDelay * conn.retryBackoffMultiplier, conn.maxRetryDelay)
+		end
+		if connIndex == State.getActiveTabIndex() then
+			local el = ui
 			if conn.consecutiveFailures >= conn.maxFailuresBeforeError then
 				el.statusLabel.Text = "Server unavailable"
 				el.statusLabel.TextColor3 = Color3.fromRGB(239, 68, 68)
@@ -314,7 +288,6 @@ local function pollForRequests(connIndex)
 	end
 end
 local function discoverPort()
-	local firstActivePort
 	for offset = 0, 4 do
 		local port = State.BASE_PORT + offset
 		local success, result = pcall(function()
@@ -330,17 +303,12 @@ local function discoverPort()
 			local ok, data = pcall(function()
 				return HttpService:JSONDecode(result.Body)
 			end)
-			if ok and data.mcpServerActive then
-				if not data.pluginConnected then
-					return port
-				end
-				if firstActivePort == nil then
-					firstActivePort = port
-				end
+			if ok and data.pluginConnected == false then
+				return port
 			end
 		end
 	end
-	return firstActivePort
+	return nil
 end
 local function activatePlugin(connIndex)
 	local _condition = connIndex
@@ -370,6 +338,16 @@ local function activatePlugin(connIndex)
 		UI.updateUIState()
 	end
 	UI.updateTabDot(idx)
+	if not conn.heartbeatConnection then
+		conn.heartbeatConnection = RunService.Heartbeat:Connect(function()
+			local now = tick()
+			local currentInterval = if conn.consecutiveFailures > 5 then conn.currentRetryDelay else conn.pollInterval
+			if now - conn.lastPoll > currentInterval then
+				conn.lastPoll = now
+				pollForRequests(idx)
+			end
+		end)
+	end
 	task.spawn(function()
 		local discoveredPort = discoverPort()
 		if discoveredPort ~= nil then
@@ -378,16 +356,6 @@ local function activatePlugin(connIndex)
 			if idx == State.getActiveTabIndex() then
 				ui.urlInput.Text = conn.serverUrl
 			end
-		end
-		if not conn.heartbeatConnection then
-			conn.heartbeatConnection = RunService.Heartbeat:Connect(function()
-				local now = tick()
-				local currentInterval = if conn.consecutiveFailures > 5 then conn.currentRetryDelay else conn.pollInterval
-				if now - conn.lastPoll > currentInterval then
-					conn.lastPoll = now
-					pollForRequests(idx)
-				end
-			end)
 		end
 		pcall(function()
 			HttpService:RequestAsync({
@@ -2555,11 +2523,18 @@ local getInstanceByPath = _binding.getInstanceByPath
 local readScriptSource = _binding.readScriptSource
 local splitLines = _binding.splitLines
 local joinLines = _binding.joinLines
+local function normalizeEscapes(s)
+	local result = s
+	result = (string.gsub(result, "\\n", "\n"))
+	result = (string.gsub(result, "\\t", "\t"))
+	result = (string.gsub(result, "\\r", "\r"))
+	result = (string.gsub(result, "\\\\", "\\"))
+	return result
+end
 local function getScriptSource(requestData)
 	local instancePath = requestData.instancePath
 	local startLine = requestData.startLine
 	local endLine = requestData.endLine
-	local fullSourceRequested = requestData.fullSource == true
 	if not (instancePath ~= "" and instancePath) then
 		return {
 			error = "Instance path is required",
@@ -2643,7 +2618,7 @@ local function getScriptSource(requestData)
 			isPartial = startLine ~= nil or endLine ~= nil,
 			truncated = false,
 		}
-		if not fullSourceRequested and startLine == nil and endLine == nil and #fullSource > 50000 then
+		if startLine == nil and endLine == nil and #fullSource > 50000 then
 			local truncatedLines = {}
 			local truncatedNumberedLines = {}
 			local maxLines = math.min(1000, #lines)
@@ -2703,7 +2678,7 @@ local function setScriptSource(requestData)
 			error = `Instance is not a script-like object: {instance.ClassName}`,
 		}
 	end
-	local sourceToSet = newSource
+	local sourceToSet = normalizeEscapes(newSource)
 	local updateSuccess, updateResult = pcall(function()
 		local oldSourceLength = #readScriptSource(instance)
 		ScriptEditorService:UpdateSourceAsync(instance, function()
@@ -2777,6 +2752,7 @@ local function editScriptLines(requestData)
 			error = "Instance path, startLine, endLine, and newContent are required",
 		}
 	end
+	newContent = normalizeEscapes(newContent)
 	local instance = getInstanceByPath(instancePath)
 	if not instance then
 		return {
@@ -2872,6 +2848,7 @@ local function insertScriptLines(requestData)
 			error = "Instance path and newContent are required",
 		}
 	end
+	newContent = normalizeEscapes(newContent)
 	local instance = getInstanceByPath(instancePath)
 	if not instance then
 		return {
@@ -3198,7 +3175,7 @@ return {
           <string name="Source"><![CDATA[-- Compiled with roblox-ts v3.0.0
 local CURRENT_VERSION = "2.3.0"
 local MAX_CONNECTIONS = 5
-local BASE_PORT = 3002
+local BASE_PORT = 58741
 local activeTabIndex = 0
 local function createConnection(port)
 	return {
@@ -3673,7 +3650,7 @@ local function init(pluginRef)
 	urlInput.Size = UDim2.new(1, 0, 0, 26)
 	urlInput.BackgroundColor3 = C.bg
 	urlInput.BorderSizePixel = 0
-	urlInput.Text = "http://localhost:3002"
+	urlInput.Text = "http://localhost:58741"
 	urlInput.TextColor3 = C.label
 	urlInput.TextSize = 11
 	urlInput.Font = Enum.Font.GothamMedium

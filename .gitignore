@@ -8,6 +8,9 @@ yarn-error.log*
 dist/
 *.tsbuildinfo
 
+# Rojo sourcemap (project-specific)
+sourcemap.json
+
 # Environment files
 .env
 .env.local
