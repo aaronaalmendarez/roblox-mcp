@@ -33,7 +33,61 @@ claude mcp add robloxstudio -- node /path/to/roblox-mcp/dist/index.js
 
 ---
 
-## 2. What This Is
+## 2. The Studio CLI — Your Daily Driver
+
+This repo ships a **zero-dependency CLI** that orchestrates the entire workflow. Use it for everything.
+
+```bash
+npm run studio -- dev --place <slug>     # Start everything
+npm run studio -- status                  # Check health
+npm run studio -- place list              # See all places
+npm run studio -- stop                    # Kill all processes
+```
+
+### Why use the CLI?
+
+| Feature | Benefit |
+|---------|---------|
+| **PID tracking** | Every spawned process gets a PID file. No orphaned `node.exe` processes. |
+| **Tree kill** | `studio stop` kills the entire process tree (not just the shell). |
+| **Log capture** | Background services write timestamped logs to `.studio-cli/logs/`. |
+| **Health checks** | Waits for MCP HTTP and Rojo TCP before reporting "ready". |
+| **Place context** | Auto-resolves active place, detected Studio place, or legacy fallback. |
+| **Beautiful UI** | ANSI boxes, spinners, tables — works in any terminal. |
+
+### Full command reference
+
+```bash
+studio dev              # MCP + Rojo + Watch + Reverse sync
+studio serve            # Rojo server only
+studio mcp              # MCP server only
+studio sync             # One-shot property sync
+studio watch            # Property file watcher
+studio build            # Build .rbxl via Rojo
+studio lint             # Luau lint
+studio place list       # Places table with active marker
+studio place status     # Resolved context box
+studio place use <key>  # Switch active place
+studio place detect     # Auto-register current Studio place
+studio status           # System dashboard
+studio stop [name]      # Kill tracked process(es)
+studio transcribe       # Whisper transcription
+studio doctor           # Blueprint doctor
+studio version          # Version + logo
+```
+
+### Global flags
+
+```bash
+--place <key>     # Target place (slug / id / name)
+--verbose         # Show process output
+--json            # Machine-readable output
+--dry-run         # Preview changes without applying
+```
+
+---
+
+## 3. What This Is
 
 An MCP server that lets AI agents read/write Luau scripts, execute code, create instances, and run playtests inside Roblox Studio.
 
@@ -46,15 +100,15 @@ An MCP server that lets AI agents read/write Luau scripts, execute code, create 
 
 ---
 
-## 3. Blueprint V1 — The Golden Path
+## 4. Blueprint V1 — The Golden Path
 
 This is how you build games with this MCP. Do not skip this.
 
 ### 3.1 Register the Place
 
 ```bash
-npm run place:detect     # Detects open Studio place, creates mapping
-npm run place:status     # Verify it resolved to Mode: place (not legacy)
+npm run studio -- place detect     # Detects open Studio place, creates mapping
+npm run studio -- place status     # Verify it resolved to Mode: place (not legacy)
 ```
 
 This creates `blueprint-v1/places/<slug>/` with:
@@ -65,14 +119,16 @@ This creates `blueprint-v1/places/<slug>/` with:
 ### 3.2 Start the Dev Environment
 
 ```bash
-npm run dev:studio -- --place <slug> --with-rojo --with-watch --with-reverse
+npm run studio -- dev --place <slug>
 ```
 
 This starts **four processes:**
-1. **MCP server** — `localhost:58741` (Studio plugin talks to this)
+1. **MCP server** — `localhost:3002` (Studio plugin talks to this)
 2. **Rojo** — `localhost:34872` (syncs local `.luau` files → Studio)
 3. **Property watcher** — watches `instances.json`, syncs props/attrs/tags to Studio
 4. **Reverse sync** — pulls Studio-side script changes back to local files
+
+> **Legacy:** `npm run dev:studio -- --place <slug>` still works if you prefer the old orchestrator.
 
 ### 3.3 Edit Local Files, Not Studio
 
@@ -108,10 +164,15 @@ The property watcher auto-detects saves and pushes to Studio. `instances` must b
 ### 3.5 Luau Lint (Run After Every Change)
 
 ```bash
-npm run luau:lint
+npm run studio -- lint
 ```
 
-Expected output: `[luau-lint] findings=0`. Fix everything before pushing/committing.
+Or run strict:
+```bash
+npm run studio -- lint --strict --fail-on-findings
+```
+
+Expected output: `findings=0`. Fix everything before pushing/committing.
 
 Common fixes:
 - `Unknown global 'tick'` → use `os.clock()`
@@ -129,7 +190,7 @@ node scripts/push-script-fast.mjs \
 
 ---
 
-## 4. MCP Direct — When Blueprint Is Off
+## 5. MCP Direct — When Blueprint Is Off
 
 Use MCP tools directly for:
 - Creating/modifying **geometry** (Parts, Folders, RemoteEvents)
@@ -147,34 +208,56 @@ Use MCP tools directly for:
 
 ---
 
-## 5. Key npm Scripts
+## 6. Key Commands
+
+### CLI (Recommended)
 
 | Command | What it does |
 |---------|-------------|
-| `npm run dev:studio -- --place <slug>` | Start MCP + Rojo + watchers |
-| `npm run place:detect` | Register current Studio place |
-| `npm run place:status` | Show active place paths |
-| `npm run blueprint:watch` | Property watcher (instances.json → Studio) |
-| `npm run blueprint:reverse-sync` | Pull Studio scripts → local files |
+| `npm run studio -- dev --place <slug>` | Start MCP + Rojo + watchers + reverse sync |
+| `npm run studio -- mcp` | MCP server only |
+| `npm run studio -- serve` | Rojo server only |
+| `npm run studio -- place detect` | Register current Studio place |
+| `npm run studio -- place status` | Show active place context |
+| `npm run studio -- place list` | List all registered places |
+| `npm run studio -- place use <key>` | Switch active place |
+| `npm run studio -- sync` | One-shot property sync |
+| `npm run studio -- watch` | Property file watcher |
+| `npm run studio -- build` | Build .rbxl via Rojo |
+| `npm run studio -- lint` | Luau static analysis |
+| `npm run studio -- status` | System health dashboard |
+| `npm run studio -- stop` | Kill all tracked processes |
+| `npm run studio -- doctor` | Full connectivity check |
+
+### Legacy npm scripts (still work)
+
+| Command | What it does |
+|---------|-------------|
+| `npm run dev:studio -- --place <slug>` | Legacy orchestrator |
+| `npm run place:detect` | Same as `studio place detect` |
+| `npm run blueprint:watch` | Property watcher |
+| `npm run blueprint:reverse-sync` | Pull Studio scripts → local |
 | `npm run blueprint:sync` | One-shot instances.json sync |
-| `npm run blueprint:doctor` | Full connectivity check |
-| `npm run luau:lint` | Luau static analysis |
+| `npm run blueprint:doctor` | Same as `studio doctor` |
+| `npm run luau:lint` | Same as `studio lint` |
 | `npm run build` | Compile TS → dist/ |
 | `npm run build:plugin` | Build Studio plugin .rbxmx |
 
 ---
 
-## 6. Troubleshooting
+## 7. Troubleshooting
 
 | Problem | Fix |
 |---------|-----|
 | `pluginConnected: false` | Studio plugin not connected. Click Connect in Plugins toolbar. |
-| `EADDRINUSE :58741` | MCP server already running. Kill it or use the existing one. |
-| `EADDRINUSE :34872` | Rojo already running. Kill it first. |
-| Place resolves to `legacy` | Run `npm run place:detect` again. |
+| `EADDRINUSE :3002` | MCP server already running. Run `npm run studio -- stop` or use the existing one. |
+| `EADDRINUSE :34872` | Rojo already running. Run `npm run studio -- stop` first. |
+| Place resolves to `legacy` | Run `npm run studio -- place detect` again. |
 | `"Manifest must contain an instances array"` | `instances.json` has `{}` instead of `[]`. |
 | Large script writes fail | Use `push-script-fast.mjs` or chunked upload tools. |
 | `set_property cannot be used for Source` | Expected — use `set_script_source` or push scripts via Rojo. |
+| Orphaned `node.exe` processes | Run `npm run studio -- stop` to kill tracked processes. Check Task Manager for stragglers. |
+| Process crashes silently | Check `.studio-cli/logs/<name>.log` for timestamped stdout/stderr. |
 
 ---
 
