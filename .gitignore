@@ -57,6 +57,7 @@ temp/
 .cache/
 .tools/
 transcripts/
+.studio-cli/
 
 # AI-generated content
 banner-prompt.txt

@@ -110,7 +110,11 @@ async function resolveContext(args) {
 
 function hasCommand(cmd) {
   try {
-    execSync(`where ${cmd}`, { stdio: 'ignore' });
+    if (process.platform === 'win32') {
+      execSync(`where ${cmd}`, { stdio: 'ignore' });
+    } else {
+      execSync(`command -v ${cmd}`, { stdio: 'ignore' });
+    }
     return true;
   } catch {
     return false;
@@ -155,11 +159,18 @@ async function waitForMcp(timeoutMs = 10000) {
 }
 
 async function waitForRojo(timeoutMs = 15000) {
+  // Rojo serve does not expose a REST API; we just wait for the port to be bound
+  // or for a reasonable startup delay to pass
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      const res = await fetch('http://127.0.0.1:34872/api/health', { signal: AbortSignal.timeout(500) });
-      if (res.ok) return true;
+      const { createConnection } = await import('node:net');
+      const ok = await new Promise((resolve) => {
+        const socket = createConnection({ port: 34872, host: '127.0.0.1' });
+        socket.on('connect', () => { socket.destroy(); resolve(true); });
+        socket.on('error', () => resolve(false));
+      });
+      if (ok) return true;
     } catch {
       // ignore
     }
@@ -649,11 +660,16 @@ async function cmdStatus(args) {
     console.log();
     const rojoS = new Spinner('Checking Rojo...').start();
     try {
-      const res = await fetch('http://127.0.0.1:34872/api/health', { signal: AbortSignal.timeout(1500) });
-      if (res.ok) {
-        rojoS.succeed('Rojo server responding');
+      const { createConnection } = await import('node:net');
+      const ok = await new Promise((resolve) => {
+        const socket = createConnection({ port: 34872, host: '127.0.0.1' });
+        socket.on('connect', () => { socket.destroy(); resolve(true); });
+        socket.on('error', () => resolve(false));
+      });
+      if (ok) {
+        rojoS.succeed('Rojo server listening on port 34872');
       } else {
-        rojoS.fail(`Rojo returned ${res.status}`);
+        rojoS.fail('Rojo not running');
       }
     } catch {
       rojoS.fail('Rojo not running');
